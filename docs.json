@@ -1,0 +1,63 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Meridian",
+  "theme": "luma",
+  "favicon": "https://media.brand.dev/d09a4cd4-9230-46f8-810c-343b72cf7a71.png",
+  "colors": {
+    "primary": "#6c6c6c",
+    "light": "#080808",
+    "dark": "#e2e2e2"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/meridiona/meridian"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "configuration"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/how-it-works",
+              "concepts/sessions",
+              "concepts/categories",
+              "concepts/task-classification"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/jira",
+              "guides/github-linear",
+              "guides/mcp-setup",
+              "guides/dashboard",
+              "guides/querying-data"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/cli",
+              "reference/environment-variables",
+              "reference/mcp-tools",
+              "reference/session-schema",
+              "reference/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

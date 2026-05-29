@@ -1,0 +1,93 @@
+---
+title: "Activity Categories: How Meridian Classifies Your Work"
+sidebarTitle: "Categories"
+description: "The ten fixed activity categories Meridian uses to classify every session, how confidence scores work, and where categories appear in the dashboard."
+---
+
+Every completed session gets an activity category. Meridian's AI looks at the app name, the window titles visible during the session, and samples of OCR text from the screen, then assigns the most fitting label from a fixed set of ten categories. The result is stored directly on the session row alongside a confidence score so you always know how certain the classification is.
+
+<Note>
+  Categories are assigned by AI and will occasionally be incorrect — especially for apps that serve multiple purposes (e.g. a browser used for both research and planning). The confidence score is the best signal of reliability: a score close to 1.0 means the AI is highly certain; a score below 0.5 suggests you should treat the label as a best guess.
+</Note>
+
+## The ten categories
+
+<Accordion title="coding">
+  Active software development work. Meridian assigns this category when you're writing or editing code in an IDE or editor, running builds or tests in a terminal, or interacting with a localhost development server.
+
+  **Typical apps and signals:** VS Code, Xcode, JetBrains IDEs (IntelliJ, PyCharm, GoLand, WebStorm), Vim/Neovim, Emacs, terminal sessions running `cargo`, `npm`, `pytest`, `make`, or similar build commands, browser tabs open to `localhost`.
+</Accordion>
+
+<Accordion title="code_review">
+  Reviewing code written by yourself or others. This category covers reading diffs, leaving comments, approving pull requests, and navigating code review workflows.
+
+  **Typical apps and signals:** GitHub PR review pages, GitLab merge requests, Gerrit review UI, browser tabs with `/pull/` or `/merge_requests/` in the URL, VS Code diff views.
+</Accordion>
+
+<Accordion title="meeting">
+  Live video or audio calls. Meridian assigns this category whenever you're in a real-time call with other people, whether that's a standup, a design review, or a one-on-one.
+
+  **Typical apps and signals:** Zoom, Google Meet, Microsoft Teams (video calls), WebEx, Around, FaceTime. The presence of video/audio call UI elements in the accessibility tree is a strong signal.
+</Accordion>
+
+<Accordion title="communication">
+  Asynchronous messaging and email. This covers reading and writing messages where the interaction is not a live call.
+
+  **Typical apps and signals:** Slack, Discord, Microsoft Teams (messaging), Gmail, Apple Mail, Outlook, Linear comment threads, GitHub issue comments.
+</Accordion>
+
+<Accordion title="design">
+  Visual and interaction design work. Meridian assigns this category when you're creating or editing UI, graphics, or design assets in a dedicated design tool.
+
+  **Typical apps and signals:** Figma, Sketch, Adobe XD, Framer, Canva, Adobe Illustrator, Adobe Photoshop.
+</Accordion>
+
+<Accordion title="documentation">
+  Writing or editing prose documents, wikis, or technical docs. This category covers any session focused on producing written content in a document editor or wiki tool.
+
+  **Typical apps and signals:** Notion, Confluence, Google Docs, GitBook, Obsidian, Quip, Coda, browser tabs on internal wiki pages.
+</Accordion>
+
+<Accordion title="planning">
+  Interacting with project management and task-tracking tools. This category captures time spent triaging, prioritizing, and managing work rather than executing it.
+
+  **Typical apps and signals:** Jira, Linear, GitHub Issues, GitHub Projects, Shortcut (formerly Clubhouse), Trello, Asana, Notion databases used as project boards.
+</Accordion>
+
+<Accordion title="deployment_devops">
+  Infrastructure, CI/CD, and operations work. Meridian assigns this category for sessions involving deploying code, monitoring systems, or managing cloud resources.
+
+  **Typical apps and signals:** GitHub Actions, CircleCI, Jenkins, Buildkite, AWS Console, Google Cloud Console, Azure Portal, Kubernetes dashboards (Lens, k9s), Datadog, Grafana, PagerDuty, Terraform Cloud.
+</Accordion>
+
+<Accordion title="research">
+  Reading to learn or gather information. This category covers time spent consuming technical content rather than producing it.
+
+  **Typical apps and signals:** Browser tabs open to documentation sites, Stack Overflow, MDN, official language or framework docs, GitHub repository browsing (not PR review), tutorial sites, technical blog posts.
+</Accordion>
+
+<Accordion title="idle_personal">
+  Non-work activity or time away from productive tasks. Meridian assigns this category when the screen content is clearly personal or entertainment-focused, or when no stronger signal is present.
+
+  **Typical apps and signals:** YouTube, Netflix, social media (Twitter/X, Reddit, LinkedIn), news sites, games, the system lock screen, screensavers. Also used as a fallback when confidence in any other category is low.
+</Accordion>
+
+## The confidence score
+
+Every session carries a `confidence` value between `0.0` and `1.0` alongside its category. This score reflects how certain the AI was when making the assignment.
+
+| Score range | What it means |
+|-------------|---------------|
+| `0.85 – 1.0` | High confidence. The app and screen content strongly matched this category. |
+| `0.60 – 0.84` | Moderate confidence. One or more signals were ambiguous (e.g. a general-purpose browser tab). |
+| `0.00 – 0.59` | Low confidence. Treat this label as a rough estimate. The session may belong to a different category. |
+
+You can filter sessions by confidence score when querying `meridian.db` directly to focus on high-certainty data.
+
+## Categories in the dashboard
+
+The dashboard at **http://localhost:3000** uses categories in three places:
+
+- **Day timeline** — each session segment on the timeline bar is colored by its category, giving you an instant visual breakdown of how your day was split across activity types.
+- **Session badges** — every session card shows a color-coded pill badge with the category label and emoji, plus the confidence score when it's below 0.85.
+- **Daily breakdown chart** — the home page includes a horizontal bar chart showing total time per category for the selected day, so you can see at a glance how much time you spent coding vs in meetings vs on research.

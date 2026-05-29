@@ -1,0 +1,168 @@
+---
+title: "Meridian Session Schema: Tables, Columns and JSON Formats"
+sidebarTitle: "Session Schema"
+description: "Full schema for meridian.db — app_sessions column types, JSON field formats, related tables, and example SQLite queries you can run directly."
+---
+
+Meridian stores all of its data in a single SQLite file at `~/.meridian/meridian.db`. You can query it directly with `sqlite3` or any SQLite client, or access it through the MCP server tools. The schema described here reflects what the daemon writes during normal operation.
+
+---
+
+## app_sessions Table
+
+The `app_sessions` table is the primary output of Meridian. Each row represents one contiguous block of time spent in a single application. The daemon writes a new row every time the focused app changes and the previous session is complete.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER | Auto-incrementing primary key. Used by `get-session-detail` and `search-sessions`. |
+| `app_name` | TEXT | Name of the application that owned this session, as reported by screenpipe (e.g. `code.visualstudio.com`, `Slack`). |
+| `started_at` | TEXT | ISO 8601 UTC timestamp when the session began. |
+| `ended_at` | TEXT | ISO 8601 UTC timestamp when the session ended. |
+| `duration_s` | REAL | Wall-clock duration in seconds (`ended_at − started_at`). |
+| `frame_count` | INTEGER | Number of screenpipe frames captured during this session. Higher values indicate more continuous recording. |
+| `category` | TEXT | AI-assigned activity category, e.g. `coding`, `meeting`, `research`, `communication`. Set by the classifier after the session closes. |
+| `confidence` | REAL | Classifier confidence score for the `category` value, in the range 0.0–1.0. |
+| `window_titles` | TEXT | JSON array of `{"window_name": string, "count": number}` objects — the distinct window titles seen during the session and how many frames each appeared in. Ordered by frequency descending. |
+| `ocr_samples` | TEXT | JSON array of up to 20 deduplicated OCR text strings sampled from screen frames during the session. |
+| `elements_samples` | TEXT | JSON array of up to 20 deduplicated accessibility-tree element strings captured during the session. |
+| `audio_snippets` | TEXT | JSON array of transcribed audio segments recorded during the session. Stored in the database but intentionally excluded from MCP responses. |
+| `signals` | TEXT | JSON array of deduplicated clipboard copy and app-switch events that occurred during the session. See the format below. |
+| `min_frame_id` | INTEGER | The lowest screenpipe frame ID included in this session. Use to cross-reference back to the raw screenpipe database. |
+| `max_frame_id` | INTEGER | The highest screenpipe frame ID included in this session. |
+
+---
+
+## JSON Column Formats
+
+### window_titles
+
+An array of objects, one per distinct window title observed during the session. The `count` field is the number of screenpipe frames in which that title appeared.
+
+```json
+[
+  { "window_name": "meridian/src/etl.rs — code.visualstudio.com", "count": 18 },
+  { "window_name": "meridian/packages/meridian-mcp/src/index.ts — code.visualstudio.com", "count": 7 },
+  { "window_name": "README.md — code.visualstudio.com", "count": 3 }
+]
+```
+
+### signals
+
+An array of events detected during the session. Meridian currently captures two event types:
+
+- **`clipboard_copy`** — text that was copied to the clipboard
+- **`app_switch`** — brief switches to another app and back
+
+```json
+[
+  { "event_type": "clipboard_copy", "value": "fn poll_frames", "timestamp": "2026-05-13T10:22:14Z" },
+  { "event_type": "app_switch",     "value": "Safari",         "timestamp": "2026-05-13T10:23:01Z" }
+]
+```
+
+---
+
+## Example Row
+
+The following is an illustrative session row serialised as JSON.
+
+```json
+{
+  "id": 1042,
+  "app_name": "code.visualstudio.com",
+  "started_at": "2026-05-13T09:14:00Z",
+  "ended_at": "2026-05-13T09:51:22Z",
+  "duration_s": 2242,
+  "frame_count": 37,
+  "category": "coding",
+  "confidence": 0.94,
+  "window_titles": [
+    { "window_name": "meridian/src/etl.rs — code.visualstudio.com", "count": 22 },
+    { "window_name": "meridian/src/classifier.rs — code.visualstudio.com", "count": 15 }
+  ],
+  "ocr_samples": [
+    "fn close_session(db: &Connection, session_id: i64)",
+    "INSERT INTO app_sessions (app_name, started_at …"
+  ],
+  "elements_samples": [
+    "Explorer: src/etl.rs",
+    "Terminal: cargo build --release"
+  ],
+  "audio_snippets": [],
+  "signals": [
+    { "event_type": "clipboard_copy", "value": "fn close_session", "timestamp": "2026-05-13T09:28:44Z" }
+  ],
+  "min_frame_id": 88201,
+  "max_frame_id": 88238
+}
+```
+
+---
+
+## Related Tables
+
+In addition to `app_sessions`, the database contains several supporting tables that the daemon and MCP server use.
+
+### active_session
+
+Holds a single row (always `id = 1`) representing the currently open, in-progress session. The daemon upserts this row on every poll tick and promotes it to `app_sessions` when the focused app changes.
+
+| Column | Description |
+|---|---|
+| `id` | Always `1`. |
+| `app_name` | App currently in focus. |
+| `started_at` | When this session block began. |
+| `last_seen_at` | Timestamp of the most recent screenpipe frame processed. |
+| `window_titles` | Same JSON format as `app_sessions.window_titles`. |
+| `frame_count` | Number of frames accumulated so far. |
+
+### pm_tasks
+
+A cache of open tickets fetched from Jira, GitHub, and Linear by the connector daemons. The classifier uses this table to match session content to ticket keys.
+
+| Column | Description |
+|---|---|
+| `task_key` | Ticket identifier, e.g. `KAN-108`. Primary key. |
+| `title` | Ticket title / summary. |
+| `url` | Direct link to the ticket in the project management tool. |
+| `status` | Current ticket status, e.g. `In Progress`, `Todo`. |
+| `source` | Which connector populated this row: `jira`, `github`, or `linear`. |
+
+### ticket_links
+
+Maps sessions to ticket keys as determined by the AI tagger pipeline. A single session can be linked to at most one primary ticket at a time; the column is also denormalised onto `app_sessions.task_key` for query convenience.
+
+| Column | Description |
+|---|---|
+| `session_id` | Foreign key to `app_sessions.id`. |
+| `task_key` | Foreign key to `pm_tasks.task_key`. |
+| `confidence` | Tagger confidence for this link (0.0–1.0). |
+| `method` | How the link was established: `rule`, `semantic`, or `llm`. |
+| `created_at` | When the tagger wrote this row. |
+
+---
+
+## Useful Queries
+
+<Tip>
+The query below gives you a quick app-usage summary for all time — the same data that powers `get-apps` in the MCP server.
+
+```sql
+SELECT
+  app_name,
+  ROUND(SUM(duration_s) / 60.0, 1) AS min,
+  COUNT(*) AS n
+FROM app_sessions
+GROUP BY app_name
+ORDER BY min DESC
+LIMIT 10;
+```
+
+Run it directly against your database:
+
+```bash
+sqlite3 ~/.meridian/meridian.db \
+  "SELECT app_name, ROUND(SUM(duration_s)/60.0,1) as min, COUNT(*) as n
+   FROM app_sessions GROUP BY app_name ORDER BY min DESC LIMIT 10;"
+```
+</Tip>

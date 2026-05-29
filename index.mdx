@@ -1,0 +1,67 @@
+---
+title: "Welcome to Meridian — Ambient Dev Automation Docs"
+sidebarTitle: "Home"
+description: "Everything you need to install, configure, and run Meridian — the local-first daemon that turns screenpipe recordings into automatic PM ticket updates."
+---
+
+Meridian is a local-first ambient automation daemon that reads your screen activity, structures it into labelled work sessions, and automatically updates your Jira, GitHub, or Linear tickets — with zero manual input and no data leaving your machine. This documentation covers everything from installation to advanced configuration.
+
+<CardGroup cols={2}>
+  <Card
+    title="Introduction"
+    icon="book-open"
+    href="/introduction"
+  >
+    Learn what Meridian does, how it works, and what you need before you install.
+  </Card>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Clone, install, and have Meridian running and syncing tickets in under 15 minutes.
+  </Card>
+  <Card
+    title="MCP Server Setup"
+    icon="plug"
+    href="/guides/mcp-setup"
+  >
+    Connect Meridian's session data to Claude, Cursor, or any MCP-compatible AI tool.
+  </Card>
+  <Card
+    title="CLI Reference"
+    icon="terminal"
+    href="/reference/cli"
+  >
+    Every `meridian` command — start, stop, logs, doctor, config, and more.
+  </Card>
+</CardGroup>
+
+## Get up and running in three steps
+
+<Steps>
+  <Step title="Install">
+    Clone the repository and run the installer. It handles every dependency — Homebrew, Rust, Node, Python, screenpipe — and registers Meridian's background daemons automatically.
+
+    ```bash
+    git clone https://github.com/meridiona/meridian
+    cd meridian
+    ./install.sh
+    ```
+  </Step>
+  <Step title="Configure">
+    The installer walks you through an interactive credential prompt. Enter your OpenRouter API key plus credentials for any PM tools you use (Jira, GitHub, Linear). Skip any service you don't need by pressing Enter.
+  </Step>
+  <Step title="Start">
+    Bring all daemons up with a single command, then open the dashboard to see your first sessions appear.
+
+    ```bash
+    meridian start
+    # Dashboard → http://localhost:3000
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  **All your data stays on your machine.** Meridian never phones home, sends telemetry, or forwards screen recordings to any remote server. Your activity database lives at `~/.meridian/meridian.db` and is yours alone.
+</Note>

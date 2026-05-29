@@ -1,0 +1,294 @@
+---
+title: "Meridian MCP Tools Reference: All 12 Tools and Parameters"
+sidebarTitle: "MCP Tools"
+description: "All twelve MCP tools exposed by the Meridian MCP server — parameters, descriptions, and example questions each tool is designed to answer."
+---
+
+The Meridian MCP server exposes your local session database to any MCP-compatible AI tool — Claude Desktop, Claude Code, Cursor, and others. Once configured, your AI assistant can answer natural-language questions about how you spent your time, which Jira tickets you worked on, and what was on screen during any session.
+
+The server reads `~/.meridian/meridian.db` as a read-only snapshot on each tool call, so the data is always at most one poll interval (default 60 seconds) stale. No data ever leaves your machine.
+
+<Note>
+`audio_snippets` are stored in the database but intentionally excluded from all MCP tool responses to reduce noise in LLM context. Audio transcriptions from screenpipe can be noisy and prone to hallucinations. They remain searchable via `search-sessions`, which performs a LIKE match against the column.
+</Note>
+
+---
+
+## Session Browsing
+
+### get-sessions
+
+List completed app sessions for a given date, with pagination. Each result includes the app name, time range, duration, frame count, and the top window titles seen during the session.
+
+**Example questions**
+- *"What apps did I use today?"*
+- *"How long was I in VS Code this morning?"*
+- *"What was I working on yesterday?"*
+
+**Parameters**
+
+<ParamField query="date" type="string">
+  Local date in `YYYY-MM-DD` format. Defaults to today.
+</ParamField>
+
+<ParamField query="app" type="string">
+  Filter by exact app name, e.g. `code.visualstudio.com`. Case-sensitive.
+</ParamField>
+
+<ParamField query="page" type="integer" default="1">
+  Page number (1-based). Use in combination with `page_size` for large days.
+</ParamField>
+
+<ParamField query="page_size" type="integer" default="20">
+  Results per page. Maximum 50.
+</ParamField>
+
+---
+
+### get-timeline
+
+Returns the full day timeline — app sessions ordered chronologically, interleaved with user-idle and system-sleep gaps. Use this when you want a narrative walk-through of the day rather than a flat list of apps.
+
+**Example questions**
+- *"Walk me through my day."*
+- *"What was I doing at 3 pm?"*
+- *"How many breaks did I take today?"*
+
+**Parameters**
+
+<ParamField query="date" type="string">
+  Local date in `YYYY-MM-DD` format. Defaults to today.
+</ParamField>
+
+---
+
+### get-stats
+
+Returns daily productivity statistics: total focus time, idle time, away (system-sleep) time, session count, and the top 8 apps by duration.
+
+**Example questions**
+- *"How productive was I today?"*
+- *"What app did I spend the most time in this week?"*
+
+**Parameters**
+
+<ParamField query="date" type="string">
+  Local date in `YYYY-MM-DD` format. Defaults to today.
+</ParamField>
+
+---
+
+### get-active-session
+
+Returns the currently open app session — the application in focus right now according to the most recent daemon poll. Returns `null` if the daemon has not run recently or the computer is idle.
+
+**Example questions**
+- *"What am I doing right now?"*
+- *"What app is currently active?"*
+
+This tool takes no parameters.
+
+---
+
+### get-apps
+
+Returns all-time app usage statistics: total time, session count, average session length, and the date the app was last seen. Useful for understanding long-term habits rather than a single day.
+
+**Example questions**
+- *"Which apps do I use most overall?"*
+- *"When did I last use Slack?"*
+
+**Parameters**
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum number of apps to return. Maximum 50.
+</ParamField>
+
+---
+
+### get-recent-sessions
+
+Returns sessions from the last N hours using a sliding time window, with any linked Jira task shown alongside each session. Unlike `get-sessions` (which is calendar-date based), this tool is anchored to the current moment.
+
+**Example questions**
+- *"What did I do in the last 2 hours?"*
+- *"What was I working on since lunch?"*
+- *"Give me a quick summary of recent activity."*
+
+**Parameters**
+
+<ParamField query="hours" type="number" default="4">
+  Look-back window in hours. Maximum 48.
+</ParamField>
+
+<ParamField query="app" type="string">
+  Filter by exact app name. Case-sensitive.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="20">
+  Maximum sessions to return. Maximum 50.
+</ParamField>
+
+---
+
+### get-session-detail
+
+Returns the full detail for a single session by ID: all window titles with occurrence counts, accessibility element samples, signals (clipboard copies and app-switch events), and the full OCR screen content. Use this after `get-sessions` or `search-sessions` when you need the complete content of a specific session.
+
+**Example questions**
+- *"Show me everything that was on screen during session #42."*
+- *"What exact files did I have open in that VS Code session?"*
+
+**Parameters**
+
+<ParamField query="id" type="integer" required>
+  Session ID from a previous `get-sessions` or `search-sessions` result.
+</ParamField>
+
+---
+
+## Search
+
+### search-sessions
+
+Performs a case-insensitive partial-text search across window titles, OCR screen text, and audio transcriptions. Use this when you know what you were looking at but not which ticket or app it maps to.
+
+**Example questions**
+- *"When did I work on the Stripe integration?"*
+- *"Find sessions where I was in a meeting."*
+- *"Which sessions mention authentication?"*
+
+**Parameters**
+
+<ParamField query="q" type="string" required>
+  Text to search for. Matched case-insensitively across window titles, OCR text, and audio transcriptions.
+</ParamField>
+
+<ParamField query="date" type="string">
+  Limit the search to a specific date (`YYYY-MM-DD`). Omit to search all history.
+</ParamField>
+
+<ParamField query="app" type="string">
+  Filter results by exact app name. Case-sensitive.
+</ParamField>
+
+<ParamField query="limit" type="integer" default="10">
+  Maximum results to return. Maximum 50.
+</ParamField>
+
+---
+
+## Task-Linked Tools
+
+These tools require the AI tagger pipeline to have run and linked sessions to ticket keys. They use semantic and rule-based classification, not just text search, so they are more accurate than `search-sessions` when you know the ticket key.
+
+### get-task-sessions
+
+Returns all sessions linked to a specific Jira task key by the tagger pipeline. Optionally filter by an exact time window or a sliding hour look-back. Set `include_content=true` to also return OCR and audio text for each session.
+
+**Example questions**
+- *"What did I do on KAN-108 today?"*
+- *"Show all work on KAN-108 in the last 4 hours."*
+- *"How long have I spent on this ticket?"*
+- *"What was I actually doing on this task?"*
+
+**Parameters**
+
+<ParamField query="task_key" type="string" required>
+  Jira task key, e.g. `KAN-108`.
+</ParamField>
+
+<ParamField query="from_time" type="string">
+  Exact window start as ISO 8601 UTC, e.g. `2026-05-13T09:00:00Z`. Takes priority over `since_hours` and `date`.
+</ParamField>
+
+<ParamField query="to_time" type="string">
+  Exact window end as ISO 8601 UTC, e.g. `2026-05-13T13:00:00Z`. Used together with `from_time`.
+</ParamField>
+
+<ParamField query="since_hours" type="number">
+  Return sessions from the last N hours (maximum 48). Overrides `date` when set.
+</ParamField>
+
+<ParamField query="date" type="string">
+  Limit to a specific date (`YYYY-MM-DD`). Defaults to today if no other time parameter is set.
+</ParamField>
+
+<ParamField query="include_content" type="boolean" default="false">
+  When `true`, each session in the response includes its OCR and audio text (up to 1,500 characters per session).
+</ParamField>
+
+---
+
+### get-task-breakdown
+
+Shows total time spent grouped by linked Jira task for a given date or time window. Each row includes the task title, status, URL, session count, and percentage of total focus time. Ideal for standups and Jira progress updates.
+
+**Example questions**
+- *"How much time per ticket today?"*
+- *"Give me a work breakdown for today."*
+- *"How was my time split across Jira tickets this week?"*
+
+**Parameters**
+
+<ParamField query="from_time" type="string">
+  Exact window start as ISO 8601 UTC. Takes priority over `since_hours` and `date`.
+</ParamField>
+
+<ParamField query="to_time" type="string">
+  Exact window end as ISO 8601 UTC. Used together with `from_time`.
+</ParamField>
+
+<ParamField query="date" type="string">
+  Date (`YYYY-MM-DD`). Defaults to today. Ignored if `from_time` or `since_hours` is set.
+</ParamField>
+
+<ParamField query="since_hours" type="number">
+  Look-back window in hours (maximum 168 = 1 week). Overrides `date` when set.
+</ParamField>
+
+---
+
+### get-active-task
+
+Returns the Jira ticket you are most likely working on right now. The tool checks the tagger's inferred context first, then falls back to the most recently linked completed session for the same app. It also reports elapsed time, task status, and confidence score.
+
+**Example questions**
+- *"What Jira ticket am I working on right now?"*
+- *"What is my current task?"*
+- *"What should I log time against?"*
+
+This tool takes no parameters.
+
+---
+
+## Health
+
+### health-check
+
+Verifies that the Meridian daemon is running and the database is accessible. Returns the last ETL run status, cursor position (the last screenpipe frame ID processed), and total session count.
+
+**Example questions**
+- *"Is Meridian running?"*
+- *"When did the daemon last process new frames?"*
+
+This tool takes no parameters.
+
+---
+
+## Tool Selection Quick Reference
+
+| Question | Recommended Tool |
+|---|---|
+| "What did I do today?" | `get-timeline` |
+| "How productive was I?" | `get-stats` |
+| "Which apps did I use?" | `get-sessions` |
+| "What am I doing right now?" | `get-active-session` |
+| "What Jira ticket am I on?" | `get-active-task` |
+| "What did I do in the last 2 hours?" | `get-recent-sessions` |
+| "Time per ticket today?" | `get-task-breakdown` |
+| "All sessions for KAN-108" | `get-task-sessions` |
+| "When did I work on X?" | `search-sessions` |
+| "Full content of session #N" | `get-session-detail` |
+| "All-time app usage" | `get-apps` |
+| "Is the daemon healthy?" | `health-check` |

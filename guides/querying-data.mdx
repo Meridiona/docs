@@ -1,0 +1,188 @@
+---
+title: "Query Meridian's SQLite Database for Custom Activity Reports"
+sidebarTitle: "Querying Data"
+description: "Directly query Meridian's local SQLite database to pull custom reports, export data, or explore your session history beyond what the dashboard provides."
+---
+
+Every session Meridian records is stored in a local SQLite database at `~/.meridian/meridian.db`. The dashboard and MCP server both read from this file, but you can also query it directly with any SQLite client. This is useful when you want a custom report, need to export data to another tool, or simply want to explore your activity history in ways the built-in views don't cover.
+
+<Warning>
+  Always open `meridian.db` in read-only mode when querying directly. Writing to the database while the daemon is running can corrupt the file. The `sqlite3` CLI opens the database read-write by default — use the flags below or append `?mode=ro` to the URI to stay safe.
+</Warning>
+
+## Open the database
+
+```bash
+sqlite3 ~/.meridian/meridian.db
+```
+
+To open in strict read-only mode:
+
+```bash
+sqlite3 -readonly ~/.meridian/meridian.db
+```
+
+<Note>
+  `meridian.db` grows at roughly 10 MB per ~9,000 screenpipe frames. A full workday of recording typically produces 5–20 MB depending on how frequently apps switch.
+</Note>
+
+<Tip>
+  If you only want to ask questions in plain English, the Meridian MCP server provides a higher-level interface directly inside your AI tool. See [MCP Setup](/guides/mcp-setup) to get started.
+</Tip>
+
+## Database schema
+
+The key tables you'll query most often:
+
+<AccordionGroup>
+  <Accordion title="app_sessions — completed sessions">
+    The primary table. One row per closed app session.
+
+    | Column | Type | Description |
+    |---|---|---|
+    | `id` | INTEGER | Primary key |
+    | `app_name` | TEXT | Application identifier (e.g. `code.visualstudio.com`) |
+    | `started_at` | TEXT | ISO 8601 UTC timestamp |
+    | `ended_at` | TEXT | ISO 8601 UTC timestamp |
+    | `duration_s` | INTEGER | Wall-clock seconds |
+    | `frame_count` | INTEGER | Number of screenpipe frames in the block |
+    | `category` | TEXT | AI-assigned category (e.g. `coding`, `meeting`) |
+    | `confidence` | REAL | Category confidence score (0.0–1.0) |
+    | `window_titles` | TEXT | JSON array of `{title, count}` |
+    | `ocr_samples` | TEXT | JSON array of up to 20 OCR text samples |
+    | `audio_snippets` | TEXT | JSON array of transcribed audio |
+    | `signals` | TEXT | JSON array of clipboard and app-switch events |
+    | `task_key` | TEXT | Linked ticket key (e.g. `KAN-108`), if classified |
+    | `task_confidence` | REAL | Ticket link confidence score |
+  </Accordion>
+  <Accordion title="active_session — currently open session">
+    A single-row table (id = 1) that the daemon keeps updated with the session currently in progress. Useful for "what am I doing right now?" queries.
+
+    | Column | Type | Description |
+    |---|---|---|
+    | `app_name` | TEXT | App currently in focus |
+    | `started_at` | TEXT | When this session began |
+    | `last_seen_at` | TEXT | Last time the daemon wrote to this row |
+    | `window_titles` | TEXT | JSON array of recent window titles |
+    | `frame_count` | INTEGER | Frames accumulated so far |
+  </Accordion>
+  <Accordion title="pm_tasks — fetched tickets">
+    All open tickets pulled from Jira, GitHub Issues, and Linear. Used as classification targets.
+
+    | Column | Type | Description |
+    |---|---|---|
+    | `task_key` | TEXT | Ticket identifier (e.g. `KAN-108`, `#42`) |
+    | `title` | TEXT | Issue title / summary |
+    | `status` | TEXT | Current status in the tracker |
+    | `url` | TEXT | Link to the ticket |
+    | `provider` | TEXT | `jira`, `github`, or `linear` |
+  </Accordion>
+  <Accordion title="ticket_links — session-to-ticket mappings">
+    Audit log of every session-to-ticket classification decision made by Meridian's AI classifier.
+
+    | Column | Type | Description |
+    |---|---|---|
+    | `session_id` | INTEGER | Foreign key to `app_sessions.id` |
+    | `task_key` | TEXT | Linked ticket key |
+    | `confidence` | REAL | Classifier confidence |
+    | `method` | TEXT | Classification method used |
+    | `created_at` | TEXT | When the link was written |
+  </Accordion>
+</AccordionGroup>
+
+## Example queries
+
+### Top apps by time today
+
+```sql
+SELECT
+  app_name,
+  ROUND(SUM(duration_s) / 60.0, 1) AS minutes,
+  COUNT(*) AS sessions
+FROM app_sessions
+WHERE date(started_at) = date('now')
+GROUP BY app_name
+ORDER BY minutes DESC
+LIMIT 10;
+```
+
+### Session count and total time per category
+
+```sql
+SELECT
+  category,
+  COUNT(*) AS sessions,
+  ROUND(SUM(duration_s) / 3600.0, 2) AS hours
+FROM app_sessions
+WHERE category IS NOT NULL
+GROUP BY category
+ORDER BY hours DESC;
+```
+
+### Sessions in a specific date range
+
+```sql
+SELECT
+  id,
+  app_name,
+  started_at,
+  ended_at,
+  ROUND(duration_s / 60.0, 1) AS minutes,
+  category
+FROM app_sessions
+WHERE started_at >= '2024-01-15T00:00:00Z'
+  AND started_at <  '2024-01-17T00:00:00Z'
+ORDER BY started_at DESC;
+```
+
+### Search sessions by window title
+
+```sql
+SELECT
+  id,
+  app_name,
+  started_at,
+  ROUND(duration_s / 60.0, 1) AS minutes,
+  window_titles
+FROM app_sessions
+WHERE window_titles LIKE '%stripe%'
+  OR window_titles LIKE '%checkout%'
+ORDER BY started_at DESC
+LIMIT 20;
+```
+
+### Summarise time linked to Jira tickets
+
+```sql
+SELECT
+  s.task_key,
+  p.title,
+  p.status,
+  COUNT(*) AS sessions,
+  ROUND(SUM(s.duration_s) / 3600.0, 2) AS hours
+FROM app_sessions s
+JOIN pm_tasks p ON s.task_key = p.task_key
+WHERE s.task_key IS NOT NULL
+  AND date(s.started_at) = date('now')
+GROUP BY s.task_key, p.title, p.status
+ORDER BY hours DESC;
+```
+
+## Use the `.mode` and `.headers` settings for readable output
+
+When running queries interactively in the SQLite shell, these settings make results easier to read:
+
+```sql
+.headers on
+.mode column
+.width 30 20 10 10
+```
+
+Or export to CSV for use in a spreadsheet:
+
+```sql
+.mode csv
+.output ~/Desktop/sessions-export.csv
+SELECT app_name, started_at, ended_at, duration_s, category FROM app_sessions;
+.output stdout
+```

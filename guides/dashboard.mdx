@@ -1,0 +1,124 @@
+---
+title: "Monitor Your Activity in the Meridian Local Dashboard"
+sidebarTitle: "Dashboard"
+description: "Explore the local web dashboard that shows your active session, focus time, category breakdown, and full day timeline, updated in real time as you work."
+---
+
+Meridian includes a Next.js dashboard that gives you a live, browser-based view of everything the daemon is recording. It reads directly from `~/.meridian/meridian.db` and updates in real time as new sessions are written — no refresh needed, no cloud sync required. Open it at any point during your day to see exactly how you've been spending your time, broken down by app, category, and minute.
+
+## Opening the dashboard
+
+The dashboard starts automatically when you run `meridian start` and listens on port 3000. To open it, navigate to:
+
+```
+http://localhost:3000
+```
+
+Any browser works. You can keep it open as a background tab while you work.
+
+## Dashboard views
+
+The dashboard has three main views accessible from the navigation bar.
+
+### Home
+
+The home page (`/`) is your at-a-glance summary of the current workday. It contains four sections:
+
+<CardGroup cols={2}>
+  <Card title="Active Session Card" icon="circle-dot">
+    Shows the app currently in focus, how long it has been active, and the top window titles seen in this session. Updates on each daemon poll cycle (every 60 seconds).
+  </Card>
+  <Card title="Daily Stats" icon="chart-bar">
+    Summarises today's total focus time, idle time, and away (sleep) time alongside the total session count. Useful for a quick productivity pulse check.
+  </Card>
+  <Card title="Category Breakdown" icon="chart-bar">
+    A horizontal bar chart showing how your focus time is distributed across activity categories. Each bar is color-coded to match the timeline below.
+  </Card>
+  <Card title="Day Timeline" icon="clock">
+    A scrollable, chronological view of every session today, rendered as color-coded segments. Idle gaps and system sleep periods appear as distinct visual breaks.
+  </Card>
+</CardGroup>
+
+### Sessions list
+
+Navigate to `/sessions` to see every completed session for the current day, ordered newest-first with pagination. Each card shows the app name, start and end time, duration, top window titles, assigned category, and confidence score.
+
+### Apps view
+
+Navigate to `/apps` to see all-time usage statistics aggregated by application: total time, session count, average session length, and the last time each app was seen. A focus donut chart at the top highlights your top apps by cumulative time.
+
+## Activity categories
+
+Meridian classifies each session into one of ten fixed categories. Each category has a distinct color used consistently across the timeline, the category breakdown chart, and every session card:
+
+| Category | Description |
+|---|---|
+| `coding` | Active development in an editor or IDE |
+| `code_review` | Pull request review, diff reading |
+| `meeting` | Video calls, conferencing apps |
+| `communication` | Messaging, email |
+| `design` | Design tools such as Figma |
+| `documentation` | Writing docs, wikis, notes |
+| `planning` | Roadmapping, ticket grooming, project management tools |
+| `deployment_devops` | CI/CD, terminal, infrastructure work |
+| `research` | Browser research, reading |
+| `idle_personal` | Idle periods or non-work apps |
+
+## Logs and maintenance
+
+To tail the dashboard's log output:
+
+```bash
+meridian logs ui
+```
+
+If you've pulled an update to the repository and want to rebuild the dashboard with the latest changes:
+
+```bash
+cd ui && npm run build
+```
+
+Then restart Meridian to pick up the new build:
+
+```bash
+meridian restart
+```
+
+<Note>
+  The dashboard reads directly from `~/.meridian/meridian.db`. It does not make any network requests and does not send your activity data anywhere. All rendering happens locally in your browser.
+</Note>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="http://localhost:3000 returns an error or doesn't load">
+    Check that the UI service is running:
+
+    ```bash
+    meridian status
+    ```
+
+    If the UI service is not listed as running, restart all services:
+
+    ```bash
+    meridian restart
+    ```
+
+    Then tail the UI log to see any startup errors:
+
+    ```bash
+    meridian logs ui
+    ```
+  </Accordion>
+  <Accordion title="The active session card shows stale data">
+    The daemon writes new data every 60 seconds (configurable via `POLL_INTERVAL_SECS`). If the card hasn't updated in longer than a minute or two, check that the daemon is running with `meridian status` and review the daemon log with `meridian logs`.
+  </Accordion>
+  <Accordion title="The dashboard was installed without the UI (--no-ui flag)">
+    If you ran `./install.sh --no-ui`, the dashboard was not built. Build and register it now:
+
+    ```bash
+    cd ui && npm run build
+    meridian restart
+    ```
+  </Accordion>
+</AccordionGroup>

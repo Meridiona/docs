@@ -1,0 +1,126 @@
+---
+title: "Configure Meridian: All Environment Variables Explained"
+sidebarTitle: "Configuration"
+description: "Learn where Meridian's config files live, how to edit them, and what every environment variable does — from polling intervals to PM credentials."
+---
+
+Meridian is configured entirely through environment variables. There are no config files with special formats or UI settings to hunt down — every option is a key-value pair in a `.env` file. The installer creates these files and populates them during the credential walkthrough, but you can edit them at any time.
+
+## Where configuration lives
+
+Meridian uses two env files, one per process boundary:
+
+| File | Used by |
+|---|---|
+| `~/.meridian/.env` | The Rust daemon — core settings and PM credentials |
+| `services/.env` | The Python agents — LLM endpoint and Jira credentials |
+
+A third internal env file is managed automatically by the installer and holds the `OPENROUTER_API_KEY` for cloud LLM fallback. In practice you never need to touch it directly — the installer keeps it in sync with the values you provide during setup.
+
+## Editing configuration
+
+To open the daemon config in your `$EDITOR`, run:
+
+```bash
+meridian config edit
+```
+
+This opens `~/.meridian/.env`. To edit the Python agents config, open `services/.env` directly:
+
+```bash
+$EDITOR services/.env
+```
+
+After saving, restart the relevant daemon for the change to take effect:
+
+```bash
+meridian restart
+```
+
+## Environment variable reference
+
+### Core daemon settings
+
+These variables control how the Rust daemon reads screenpipe data and classifies sessions. All of them are optional — the defaults work out of the box.
+
+| Variable | Default | Description |
+|---|---|---|
+| `SCREENPIPE_DB` | `~/.screenpipe/db.sqlite` | Path to screenpipe's SQLite database. Meridian opens this read-only. |
+| `MERIDIAN_DB` | `~/.meridian/meridian.db` | Path where Meridian writes its own session database. Created on first run. |
+| `POLL_INTERVAL_SECS` | `60` | How often (in seconds) the daemon checks screenpipe for new frames. |
+| `CLASSIFICATION_ENABLED` | `true` | Set to `false` to run activity tracking and categorisation only, with no MLX server needed. |
+| `MLX_SERVER_PORT` | `7823` | The port the persistent MLX inference server listens on. |
+| `CLASSIFICATION_TIMEOUT_S` | `120` | Per-session inference timeout in seconds. Increase this if you see timeout errors on long sessions. |
+| `CLASSIFIER_BACKEND` | `mlx` | Classification backend. Set to `mlx` when using the MLX inference server (recommended for Apple Silicon). |
+
+<Note>
+  Setting `CLASSIFICATION_ENABLED=false` lets you run Meridian in activity-tracking mode. The daemon still reads screenpipe frames, builds app sessions, and assigns activity categories — it just skips the ticket-linking step and doesn't require the MLX server to be running. This is useful if you're not ready to configure PM credentials or just want to explore the session data first.
+</Note>
+
+### Jira
+
+All three credential variables are required to enable the Jira connector. `JIRA_PROJECT_KEYS` is optional — omitting it syncs across all projects your account can access.
+
+| Variable | Default | Description |
+|---|---|---|
+| `JIRA_BASE_URL` | _(none)_ | Your Atlassian instance URL, e.g. `https://your-org.atlassian.net`. |
+| `JIRA_EMAIL` | _(none)_ | The email address associated with your Atlassian account. |
+| `JIRA_API_TOKEN` | _(none)_ | An Atlassian API token. Generate one at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens). |
+| `JIRA_PROJECT_KEYS` | _(all projects)_ | Comma-separated project keys to scope ticket lookups, e.g. `KAN,ENG`. Leave empty to search all accessible projects. |
+
+### GitHub
+
+Both credential variables are required to enable the GitHub connector. `GITHUB_REPOS` is optional — omitting it covers all repositories in your org.
+
+| Variable | Default | Description |
+|---|---|---|
+| `GITHUB_TOKEN` | _(none)_ | A GitHub personal access token with `repo` scope. |
+| `GITHUB_ORG` | _(none)_ | Your GitHub organisation name. |
+| `GITHUB_REPOS` | _(all org repos)_ | Comma-separated list of `org/repo` slugs to scope issue lookups, e.g. `your-org/api,your-org/web`. Leave empty to search all org repos. |
+
+### Linear
+
+The API key is required to enable the Linear connector. `LINEAR_TEAM_IDS` is optional.
+
+| Variable | Default | Description |
+|---|---|---|
+| `LINEAR_API_KEY` | _(none)_ | A Linear API key. Generate one in your Linear workspace under **Settings → API**. |
+| `LINEAR_TEAM_IDS` | _(all teams)_ | Comma-separated team identifiers to scope issue lookups, e.g. `TEAM1,TEAM2`. Leave empty to search all teams your key can access. |
+
+## Minimal working configuration
+
+The smallest configuration that enables activity tracking, session categorisation, and Jira ticket sync is:
+
+```bash title="~/.meridian/.env"
+# Required for task classification and Jira sync
+JIRA_BASE_URL=https://your-org.atlassian.net
+JIRA_EMAIL=you@your-org.com
+JIRA_API_TOKEN=your-api-token
+
+# Enable classification (default: true — shown here for clarity)
+CLASSIFICATION_ENABLED=true
+```
+
+Everything else defaults to safe values and can be added incrementally.
+
+## Re-running credential prompts
+
+The installer skips any variable that already has a value in the relevant `.env` file. To re-prompt for a specific credential, delete that line from the file and re-run the installer:
+
+```bash
+# 1. Remove the line you want to re-set (e.g. JIRA_API_TOKEN)
+meridian config edit
+
+# 2. Re-run the installer — it will prompt only for missing values
+./install.sh --skip-permissions
+```
+
+If you want to bypass the credential prompts entirely and manage the files yourself, pass `--skip-env`:
+
+```bash
+./install.sh --skip-env
+```
+
+<Tip>
+  You can also edit `~/.meridian/.env` directly with any text editor and then run `meridian restart`. The installer's prompt flow is a convenience, not a requirement.
+</Tip>

@@ -1,0 +1,85 @@
+---
+title: "How Meridian Works: From Screen Frames to Ticket Updates"
+sidebarTitle: "How It Works"
+description: "Understand the three-layer pipeline that turns raw screenpipe recordings into categorized sessions and automatic project management updates."
+---
+
+Meridian sits quietly alongside screenpipe on your Mac and continuously refines its raw screen recordings into something meaningful — structured work sessions, classified by activity type and linked to the exact Jira, GitHub, or Linear ticket you were working on. Every update to your PM tools happens automatically, with no manual input from you.
+
+## The pipeline at a glance
+
+Every 60 seconds, Meridian wakes up, reads the latest frames from screenpipe's database, and advances through three processing stages before writing results back to its own local database.
+
+```text
+screenpipe.db (read-only)
+        │
+        ▼
+┌───────────────────────────────────────────────────┐
+│  ETL Runner  (every 60 s)                         │
+│  • Read new frames since last cursor position     │
+│  • Detect app-switch boundaries                   │
+│  • Extract OCR text, signals, audio snippets      │
+│  • Upsert active session (currently open)         │
+│  • Close completed sessions → app_sessions        │
+└───────────────────────┬───────────────────────────┘
+                        │
+                        ▼
+               meridian.db (SQLite)
+                        │
+           ┌────────────┴────────────┐
+           ▼                         ▼
+┌─────────────────────┐   ┌──────────────────────────────┐
+│  AI Categorization  │   │  Task Classification          │
+│  • App name         │   │  • On-device MLX inference   │
+│  • Window titles    │   │  • Qwen3.5-9B model          │
+│  • OCR content      │   │  • Links sessions to tickets  │
+│  • 10 fixed labels  │   │  • Drives PM sync            │
+└─────────────────────┘   └──────────────────────┬───────┘
+                                                 │
+                                                 ▼
+                                    Jira / GitHub / Linear
+                                    (automatic ticket updates)
+```
+
+The database Meridian writes to lives at `~/.meridian/meridian.db`. Screenpipe's database is opened in read-only mode — Meridian never modifies it.
+
+## Layer 1 — ETL: turning frames into sessions
+
+The ETL (Extract, Transform, Load) runner is the foundation. It reads raw screenpipe frames in batches, detects the moment you switch from one app to another, and uses that boundary to open and close *sessions*. Each session represents a continuous block of time in a single app.
+
+Within each session the ETL runner collects supporting context: OCR text captured from the screen, window titles, clipboard copies, and app-switch signals. When a session closes, all of that context is stored together in a single row in the `app_sessions` table. The runner tracks a cursor so it never re-processes frames it has already seen, and it handles edge cases like user idle time and system sleep gaps.
+
+## Layer 2 — Categorization: what type of work?
+
+Once a session is written, the AI categorizer reads the app name, window titles, and OCR samples and assigns one of ten fixed activity categories — `coding`, `meeting`, `research`, and so on. Each classification comes with a confidence score between 0.0 and 1.0.
+
+Categorization happens entirely on your machine. No screen content leaves your device. The category and confidence score are stored directly on the session row.
+
+## Layer 3 — Task classification: which specific ticket?
+
+Task classification goes further: it identifies the exact Jira issue, GitHub issue, or Linear task you were working on during a session. The classifier reads window titles, OCR text, git branch names visible in the terminal, and clipboard content, then matches that context against your open tickets. Results are stored in the `ticket_links` table and used to drive automatic updates to your PM tools.
+
+Task classification requires the MLX inference server (Qwen3.5-9B) to be running and your PM credentials to be configured. You can disable it with `CLASSIFICATION_ENABLED=false` — the ETL and categorization layers still run normally.
+
+## The MCP server: AI tools get structured context
+
+Meridian ships a TypeScript MCP server that exposes your session data to any MCP-compatible AI tool — Claude Code, Claude Desktop, Cursor, and others. Once you add Meridian to your MCP client configuration, AI assistants can answer questions like *"what Jira ticket am I working on right now?"* or *"how much time did I spend on KAN-108 today?"* by querying your local session database directly.
+
+The MCP server provides tools for querying sessions, timelines, stats, active tasks, and task breakdowns. It reads `~/.meridian/meridian.db` via a pure WebAssembly SQLite engine — no native Node.js modules required.
+
+<Note>
+  The MCP server intentionally excludes `audio_snippets` from its responses to reduce noise for AI tools. Audio transcriptions are still stored in the database and remain searchable via `search-sessions`.
+</Note>
+
+## The local dashboard
+
+The dashboard at **http://localhost:3000** gives you a visual view of everything Meridian has recorded: a color-coded day timeline, per-category breakdowns, session cards with window titles and OCR excerpts, and an always-visible active session indicator. It runs as a local Next.js process managed by launchd — no cloud, no login.
+
+<CardGroup cols={2}>
+  <Card title="Sessions" icon="table" href="/concepts/sessions">
+    Understand the session data model — every field, what it means, and how to query it directly.
+  </Card>
+  <Card title="Categories" icon="tag" href="/concepts/categories">
+    See all ten activity categories, how the AI assigns them, and what the confidence score tells you.
+  </Card>
+</CardGroup>

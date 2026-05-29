@@ -1,0 +1,202 @@
+---
+title: "Connect Meridian to GitHub Issues or Linear Issues"
+sidebarTitle: "GitHub & Linear"
+description: "Pull open GitHub or Linear issues into Meridian so coding sessions are automatically classified against the right tickets, with no manual tracking needed."
+---
+
+Meridian supports two additional issue trackers alongside Jira: GitHub Issues and Linear. Both work the same way under the hood — Meridian fetches your open issues into the local `pm_tasks` table and uses them as classification targets when it processes each app session. You can enable one, the other, or both at the same time.
+
+<Tabs>
+  <Tab title="GitHub Issues">
+    ## What Meridian does with GitHub Issues
+
+    Meridian fetches open issues from your GitHub organisation's repositories using the GitHub REST API. Each issue is stored in `pm_tasks` alongside any Jira or Linear issues you've configured. When Meridian classifies a coding session — say, an hour in VS Code on a feature branch — it matches that work against your open issues and writes a `ticket_links` row with the best-matching issue key.
+
+    ## Prerequisites
+
+    - A GitHub account with access to your organisation's repositories
+    - A personal access token (PAT) with at least the `repo` scope
+
+    ## Create a GitHub personal access token
+
+    <Steps>
+      <Step title="Open GitHub Settings">
+        Click your avatar in the top-right corner of GitHub, then choose **Settings**.
+      </Step>
+      <Step title="Navigate to Developer settings">
+        Scroll to the bottom of the left sidebar and click **Developer settings**.
+      </Step>
+      <Step title="Generate a new token">
+        Select **Personal access tokens → Fine-grained tokens** (recommended) or **Tokens (classic)**. Click **Generate new token**.
+
+        For a classic token, enable the **repo** scope. For a fine-grained token, grant **Read-only** access to **Issues** and **Repository metadata** for the repositories Meridian should monitor.
+      </Step>
+      <Step title="Copy the token">
+        Copy the token value before navigating away — GitHub only shows it once.
+      </Step>
+    </Steps>
+
+    ## Set environment variables
+
+    Open the Meridian env file:
+
+    ```bash
+    meridian config edit
+    ```
+
+    Add the GitHub block to `~/.meridian/.env`:
+
+    ```bash
+    # ~/.meridian/.env
+
+    GITHUB_TOKEN=ghp_your_personal_access_token
+    GITHUB_ORG=your-org-name
+
+    # Optional: limit to specific repos (comma-separated owner/repo pairs)
+    # GITHUB_REPOS=your-org/api,your-org/web
+    ```
+
+    If `GITHUB_REPOS` is omitted, Meridian fetches open issues from all repositories in the organisation that your token can access.
+
+    ## Apply and verify
+
+    <Steps>
+      <Step title="Restart the daemon">
+        ```bash
+        meridian restart
+        ```
+      </Step>
+      <Step title="Check the connection">
+        ```bash
+        meridian doctor
+        ```
+        Look for `github: connected` in the output. Meridian reports the connection status for every configured integration.
+      </Step>
+      <Step title="Confirm issues were fetched">
+        ```bash
+        sqlite3 ~/.meridian/meridian.db \
+          "SELECT task_key, title FROM pm_tasks WHERE provider='github' LIMIT 10;"
+        ```
+      </Step>
+    </Steps>
+
+    ## Filter to specific repositories
+
+    Set `GITHUB_REPOS` to a comma-separated list of `owner/repo` strings:
+
+    ```bash
+    GITHUB_REPOS=myorg/api,myorg/web,myorg/infra
+    ```
+
+    Only open issues from those repositories will be pulled into `pm_tasks`. This is useful when your organisation has many repositories but you only actively work in a subset.
+
+    ## Troubleshooting
+
+    <AccordionGroup>
+      <Accordion title="401 or 403 errors on startup">
+        Check that your token has not expired and has the correct scopes. Classic tokens need the `repo` scope; fine-grained tokens need read access to Issues. Regenerate the token in GitHub Settings if needed.
+      </Accordion>
+      <Accordion title="pm_tasks is empty for GitHub">
+        Confirm that `GITHUB_ORG` matches your organisation's login name exactly (case-sensitive). If `GITHUB_REPOS` is set, verify each entry uses the full `owner/repo` format. Your token must have access to at least one repository in the org.
+      </Accordion>
+      <Accordion title="meridian doctor shows github: not configured">
+        Both `GITHUB_TOKEN` and `GITHUB_ORG` are required. Run `meridian config edit` and confirm neither is commented out.
+      </Accordion>
+    </AccordionGroup>
+  </Tab>
+
+  <Tab title="Linear">
+    ## What Meridian does with Linear
+
+    Meridian fetches your open Linear issues via the Linear GraphQL API and stores them in `pm_tasks`. Session classification then uses these issues as candidates — when you spend time in a code editor or design tool, Meridian links that session to the most relevant Linear issue it can find.
+
+    ## Prerequisites
+
+    - A Linear account with access to one or more teams
+    - A Linear API key
+
+    ## Create a Linear API key
+
+    <Steps>
+      <Step title="Open Linear Settings">
+        Click your avatar in the bottom-left corner of the Linear app, then choose **Settings**.
+      </Step>
+      <Step title="Navigate to API">
+        In the Settings sidebar, click **API** under the **My account** section.
+      </Step>
+      <Step title="Create a personal API key">
+        Under **Personal API keys**, click **Create key**. Give it a descriptive label such as `meridian-local` and click **Create key**.
+      </Step>
+      <Step title="Copy the key">
+        Copy the key value immediately — Linear only shows it once. It starts with `lin_api_`.
+      </Step>
+    </Steps>
+
+    ## Set environment variables
+
+    Open the Meridian env file:
+
+    ```bash
+    meridian config edit
+    ```
+
+    Add the Linear block to `~/.meridian/.env`:
+
+    ```bash
+    # ~/.meridian/.env
+
+    LINEAR_API_KEY=lin_api_your_key_here
+
+    # Optional: restrict to specific team IDs (comma-separated)
+    # LINEAR_TEAM_IDS=TEAM1,TEAM2
+    ```
+
+    If `LINEAR_TEAM_IDS` is omitted, Meridian fetches open issues from all teams your account belongs to.
+
+    ## Apply and verify
+
+    <Steps>
+      <Step title="Restart the daemon">
+        ```bash
+        meridian restart
+        ```
+      </Step>
+      <Step title="Check the connection">
+        ```bash
+        meridian doctor
+        ```
+        Meridian reports connection status for each configured integration. Look for `linear: connected`.
+      </Step>
+      <Step title="Confirm issues were fetched">
+        ```bash
+        sqlite3 ~/.meridian/meridian.db \
+          "SELECT task_key, title FROM pm_tasks WHERE provider='linear' LIMIT 10;"
+        ```
+      </Step>
+    </Steps>
+
+    ## Filter to specific teams
+
+    Set `LINEAR_TEAM_IDS` to a comma-separated list of team identifiers:
+
+    ```bash
+    LINEAR_TEAM_IDS=ENG,DESIGN
+    ```
+
+    Only issues belonging to those teams will be pulled into `pm_tasks`. Find your team IDs in Linear under **Settings → Teams** — each team has an identifier shown in its URL and settings page.
+
+    ## Troubleshooting
+
+    <AccordionGroup>
+      <Accordion title="Authentication errors on startup">
+        Confirm that `LINEAR_API_KEY` starts with `lin_api_` and has not been revoked. Regenerate the key in Linear Settings → API if needed.
+      </Accordion>
+      <Accordion title="pm_tasks is empty for Linear">
+        Check that your account is a member of at least one team with open issues. If `LINEAR_TEAM_IDS` is set, verify the IDs match the identifiers shown in Linear Settings — they are case-sensitive.
+      </Accordion>
+      <Accordion title="meridian doctor shows linear: not configured">
+        `LINEAR_API_KEY` is the only required variable for Linear. Run `meridian config edit` and confirm it is present and uncommented.
+      </Accordion>
+    </AccordionGroup>
+  </Tab>
+</Tabs>

@@ -1,0 +1,79 @@
+---
+title: "App Sessions: The Core Unit of Meridian Activity Data"
+sidebarTitle: "Sessions"
+description: "Learn what a session is, how Meridian detects session boundaries, and what every field in the app_sessions table means — with direct query examples."
+---
+
+A session is the fundamental unit of data in Meridian. Every time you switch from one app to another, Meridian closes the previous session and opens a new one. Each session captures everything that was visible on your screen during that focused block of time — the app you were in, the windows you had open, OCR text sampled from the display, clipboard activity, and more.
+
+## What makes a session
+
+A session starts the moment an app comes into focus and ends the moment you switch away from it. Meridian detects these boundaries by watching for app-switch events in the screenpipe frame stream. If you stay in VS Code for 45 minutes without switching away, that becomes a single session lasting 45 minutes. If you switch to Slack and back, those are three separate sessions.
+
+### Active vs completed sessions
+
+Meridian maintains exactly one *active session* at a time — the app currently in focus. The active session is stored in the `active_session` table and updated with each ETL tick. It has no `ended_at` value yet.
+
+When you switch apps, Meridian closes the active session, writes it as a completed row to `app_sessions`, and opens a new active session for the app you switched to. Only completed sessions are classified by category and linked to tickets.
+
+## The session data model
+
+The `app_sessions` table in `~/.meridian/meridian.db` holds one row per completed session. Every field is documented below.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `app_name` | `TEXT` | The name of the application that owned this session (e.g. `code.visualstudio.com`, `Slack`). |
+| `started_at` | `TEXT` | ISO 8601 UTC timestamp when the session opened. |
+| `ended_at` | `TEXT` | ISO 8601 UTC timestamp when the session closed. |
+| `duration_s` | `INTEGER` | Wall-clock length of the session in seconds. |
+| `frame_count` | `INTEGER` | Number of screenpipe frames captured during this session. |
+| `category` | `TEXT` | AI-assigned activity category (e.g. `coding`, `meeting`, `research`). |
+| `confidence` | `REAL` | Category confidence score from 0.0 to 1.0. Higher means the AI is more certain. |
+| `window_titles` | `JSON` | Array of `{window_name, count}` objects — deduplicated window titles seen during the session, ordered by frequency. |
+| `ocr_samples` | `JSON` | Array of up to 20 deduplicated OCR text samples extracted from screen frames. |
+| `elements_samples` | `JSON` | Array of up to 20 deduplicated accessibility tree samples captured during the session. |
+| `audio_snippets` | `JSON` | Array of transcribed audio captured during the session. Stored in the DB but excluded from MCP responses. |
+| `signals` | `JSON` | Array of deduplicated clipboard copies and app-switch events detected during the session. |
+| `min_frame_id` | `INTEGER` | The lowest screenpipe frame ID included in this session — links back to screenpipe's raw data. |
+| `max_frame_id` | `INTEGER` | The highest screenpipe frame ID included in this session. |
+
+<Note>
+  `audio_snippets` are stored in `meridian.db` but intentionally excluded from all MCP tool responses. This keeps LLM context clean and reduces noise when AI tools query your session data. Audio content is still searchable via the `search-sessions` MCP tool.
+</Note>
+
+## Where sessions live
+
+Meridian writes all completed sessions to its own SQLite database at `~/.meridian/meridian.db`. This file is separate from screenpipe's database and is owned entirely by Meridian. The `min_frame_id` and `max_frame_id` fields on each session let you trace back to the original screenpipe frames if you need them.
+
+The database grows at roughly 10 MB per 9,000 frames of recorded activity. You can open it with any SQLite client.
+
+## Querying sessions directly
+
+Use `sqlite3` to query your sessions without going through the dashboard or MCP tools:
+
+```sql
+-- Today's sessions by app, ordered by total time
+SELECT
+  app_name,
+  ROUND(SUM(duration_s) / 60.0, 1) AS minutes,
+  COUNT(*) AS session_count
+FROM app_sessions
+WHERE started_at >= date('now')
+  AND started_at < date('now', '+1 day')
+GROUP BY app_name
+ORDER BY minutes DESC
+LIMIT 10;
+```
+
+```bash
+# Run it from your terminal
+sqlite3 ~/.meridian/meridian.db \
+  "SELECT app_name, ROUND(SUM(duration_s)/60.0,1) AS min, COUNT(*) AS n
+   FROM app_sessions
+   WHERE started_at >= date('now')
+   GROUP BY app_name ORDER BY min DESC LIMIT 10;"
+```
+
+<Tip>
+  The Meridian dashboard at **http://localhost:3000** and the MCP server both read from this same database. Any SQL query you run against `~/.meridian/meridian.db` reflects exactly what the dashboard shows.
+</Tip>

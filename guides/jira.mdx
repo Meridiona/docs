@@ -1,0 +1,146 @@
+---
+title: "Connect Meridian to Jira Cloud for Automatic Tracking"
+sidebarTitle: "Jira"
+description: "Link your Jira Cloud workspace to Meridian so sessions are classified against your open tickets and time is tracked without manual input."
+---
+
+Meridian fetches your open Jira tickets, stores them locally as `pm_tasks`, and uses them during session classification. Every time you close a coding or research session, Meridian's classifier checks which ticket that work most likely belongs to and writes a `ticket_links` row to its database — no timesheets, no manual updates required. All you need is a Jira API token and three environment variables.
+
+## Prerequisites
+
+- A Jira Cloud account (Jira Data Center is not supported)
+- An API token from your Atlassian account
+- Meridian installed and the daemon running (`meridian status` to confirm)
+
+## Get a Jira API token
+
+<Steps>
+  <Step title="Open Atlassian account settings">
+    Navigate to [id.atlassian.com](https://id.atlassian.com) and sign in, then click your avatar in the top-right corner and choose **Manage account**.
+  </Step>
+  <Step title="Open the Security tab">
+    Select the **Security** tab in the left sidebar.
+  </Step>
+  <Step title="Create a new token">
+    Scroll to **API tokens** and click **Create and manage API tokens → Create API token**. Give it a descriptive label such as `meridian-local` and click **Create**.
+  </Step>
+  <Step title="Copy the token">
+    Copy the token value immediately — Atlassian will not show it again. Paste it somewhere temporary before moving to the next step.
+  </Step>
+</Steps>
+
+## Configure Meridian
+
+Set the following environment variables. The cleanest way is to open the Meridian env file directly:
+
+```bash
+meridian config edit
+```
+
+This opens `~/.meridian/.env` in your `$EDITOR`. Add or update the Jira block:
+
+```bash
+# ~/.meridian/.env
+
+JIRA_BASE_URL=https://your-org.atlassian.net
+JIRA_EMAIL=you@your-org.com
+JIRA_API_TOKEN=your-api-token-here
+
+# Optional: restrict sync to specific project keys (comma-separated)
+# JIRA_PROJECT_KEYS=KAN,ENG
+```
+
+<Note>
+  Meridian only reads your Jira tickets for classification. It never creates, modifies, closes, or deletes tickets on your behalf.
+</Note>
+
+Alternatively, re-run the installer's credential walkthrough to be prompted interactively:
+
+```bash
+./install.sh --skip-permissions
+```
+
+## Apply and verify
+
+<Steps>
+  <Step title="Restart the daemon">
+    ```bash
+    meridian restart
+    ```
+    The daemon re-reads `~/.meridian/.env` on startup and refreshes the `pm_tasks` cache from Jira within the first poll cycle.
+  </Step>
+  <Step title="Run a health check">
+    ```bash
+    meridian doctor
+    ```
+    Look for `jira: connected` in the output. A green status confirms Meridian can reach your Jira instance and has fetched at least one ticket.
+  </Step>
+  <Step title="Inspect the task cache (optional)">
+    ```bash
+    sqlite3 ~/.meridian/meridian.db \
+      "SELECT task_key, title, status FROM pm_tasks LIMIT 10;"
+    ```
+    You should see rows for your open issues.
+  </Step>
+</Steps>
+
+## Limit which projects are synced
+
+By default Meridian fetches every open ticket assigned to you. To restrict it to one or more projects, set `JIRA_PROJECT_KEYS` to a comma-separated list of project keys:
+
+```bash
+JIRA_PROJECT_KEYS=KAN,ENG
+```
+
+Only issues whose key prefix matches one of the listed values will be pulled into `pm_tasks`. This speeds up the initial cache load and keeps the classifier focused on relevant work.
+
+## Force-refresh the Jira task cache
+
+The daemon refreshes `pm_tasks` automatically at startup. If you've just closed a sprint, reassigned tickets, or simply want to pull the latest data without restarting the daemon, run:
+
+```bash
+python3 scripts/refresh_pm_tasks.py
+```
+
+You can also pass a custom JQL expression or point it at a different database:
+
+```bash
+# Custom JQL
+python3 scripts/refresh_pm_tasks.py --jql "project=KAN ORDER BY updated DESC"
+
+# Custom DB path
+python3 scripts/refresh_pm_tasks.py --db /path/to/meridian.db
+
+# Combine both
+python3 scripts/refresh_pm_tasks.py \
+  --jql "project=ENG AND sprint in openSprints()" \
+  --db ~/.meridian/meridian.db
+```
+
+The script reads your credentials from `~/.meridian/.env` automatically — no extra configuration needed.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized when Meridian starts">
+    A 401 error means the credentials are incorrect. Double-check that:
+
+    - `JIRA_EMAIL` matches the email address on your Atlassian account exactly.
+    - `JIRA_API_TOKEN` is the token value itself, not a label or partial string.
+    - `JIRA_BASE_URL` ends with `.atlassian.net` and has no trailing slash.
+
+    Regenerate the API token in Atlassian account settings if you're unsure.
+  </Accordion>
+  <Accordion title="pm_tasks table is empty after connecting">
+    An empty `pm_tasks` table means the JQL query returned no issues. Check that:
+
+    - Your account has at least one open issue assigned to it in the targeted projects.
+    - If you set `JIRA_PROJECT_KEYS`, confirm the keys are correct (they are case-sensitive, e.g. `KAN` not `kan`).
+    - The issue type is `Task` or `Feature` — the default JQL filters on those types.
+
+    Run `python3 scripts/refresh_pm_tasks.py --jql "project=KAN ORDER BY updated DESC"` to test with broader criteria.
+  </Accordion>
+  <Accordion title="meridian doctor reports jira: not configured">
+    All three Jira variables (`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`) must be set. Run `meridian config edit` and confirm none of them are commented out or missing.
+  </Accordion>
+</AccordionGroup>

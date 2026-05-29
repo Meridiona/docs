@@ -1,0 +1,346 @@
+---
+title: "Meridian Troubleshooting: Diagnose and Fix Common Issues"
+sidebarTitle: "Troubleshooting"
+description: "Step-by-step fixes for installation failures, daemon crashes, Jira and GitHub auth errors, MCP server issues, and macOS permission problems."
+---
+
+When something goes wrong with Meridian, start with `meridian doctor`. It runs the full suite of environment health checks — binary presence, plist validity, running processes, database existence, Python venv, and MCP build — and tells you exactly which check failed and what to do about it.
+
+```bash
+meridian doctor
+```
+
+The sections below cover the most common failure patterns in more detail.
+
+---
+
+## Installation & Setup
+
+<Accordion title="install.sh fails at the Homebrew step">
+
+The installer uses Homebrew to install system dependencies (Rust, Node, Python, screenpipe). If it fails at this step:
+
+1. Make sure you have an active internet connection.
+2. Ensure Xcode Command Line Tools are installed:
+
+```bash
+xcode-select --install
+```
+
+If the tools are already installed, the command exits immediately with a message to that effect. Otherwise, follow the on-screen prompt and re-run `./install.sh` after the installation completes.
+
+</Accordion>
+
+<Accordion title="Rust build fails">
+
+Meridian compiles the ETL daemon from Rust source. If the build fails, first check that the correct toolchain is active:
+
+```bash
+rustup show
+```
+
+The output should show a stable toolchain for `aarch64-apple-darwin` (Apple Silicon) or `x86_64-apple-darwin`. If `rustup` is not found at all, install it:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Then re-run `./install.sh`. The `rust-toolchain.toml` file in the repo root pins the exact version the project requires, so `rustup` picks it up automatically.
+
+</Accordion>
+
+<Accordion title="Python venv setup fails">
+
+The Python services (MLX inference server, Jira updater, task classifier) require Python 3.13. Check whether it is installed:
+
+```bash
+python3.13 --version
+```
+
+If the command is not found, install it via Homebrew or pyenv:
+
+```bash
+# Homebrew
+brew install python@3.13
+
+# pyenv
+pyenv install 3.13
+pyenv global 3.13
+```
+
+After installing Python 3.13, re-run the service setup:
+
+```bash
+bash scripts/setup-services.sh
+```
+
+</Accordion>
+
+---
+
+## Daemon & Runtime
+
+<Accordion title="Daemon exits immediately on startup">
+
+The Rust daemon TCP-connects to the MLX inference server before entering its poll loop. If the MLX server is not running, the daemon exits immediately with an error message in the log.
+
+**Fix — install and start the MLX server daemon:**
+
+```bash
+bash services/scripts/install-mlx-server-daemon.sh
+```
+
+Then check that it started:
+
+```bash
+meridian logs mlx-server -f
+```
+
+Wait until you see `server: MLX model ready` (this can take up to 30 seconds on first run while the model downloads).
+
+Alternatively, if you do not need session classification, set `CLASSIFICATION_ENABLED=false` in `~/.meridian/.env` and restart:
+
+```bash
+meridian config edit   # set CLASSIFICATION_ENABLED=false
+meridian restart
+```
+
+Run `meridian doctor` afterwards to confirm everything is healthy.
+
+</Accordion>
+
+<Accordion title="How to check daemon health">
+
+Two commands give you a complete picture:
+
+```bash
+meridian status    # Is the process running?
+meridian doctor    # Are all dependencies satisfied?
+```
+
+For live log output:
+
+```bash
+meridian logs daemon -f          # stdout (info/debug)
+meridian logs daemon-error -f    # stderr (errors and panics)
+```
+
+</Accordion>
+
+<Accordion title="Sessions are not appearing in the database">
+
+If `meridian status` shows the daemon is running but no sessions appear in `~/.meridian/meridian.db`, check the following:
+
+1. **Is screenpipe running?**
+
+```bash
+meridian status    # look for com.meridiona.screenpipe
+```
+
+2. **Does the screenpipe database exist?**
+
+```bash
+ls -lh ~/.screenpipe/db.sqlite
+```
+
+If the file is missing, screenpipe has not recorded any frames yet. Ensure screenpipe has Screen Recording permission (see the macOS Permissions section below) and that it has been running long enough to produce data.
+
+3. **Is `SCREENPIPE_DB` pointing to the right path?**
+
+```bash
+meridian config edit    # verify SCREENPIPE_DB if you customised it
+```
+
+</Accordion>
+
+---
+
+## Integrations
+
+<Accordion title="Jira: 401 Unauthorized">
+
+A 401 from the Jira API means either `JIRA_EMAIL` or `JIRA_API_TOKEN` is wrong, or the token has been revoked.
+
+1. Open `~/.meridian/.env` with `meridian config edit`.
+2. Verify that `JIRA_EMAIL` matches the email address of the Atlassian account that owns the token.
+3. Regenerate the token at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens) and paste the new value into `JIRA_API_TOKEN`.
+4. Restart: `meridian restart`.
+
+</Accordion>
+
+<Accordion title="Jira: no Jira tasks are loading">
+
+If the Jira connector is authenticated but no Jira tasks are appearing in session classifications:
+
+1. Check `JIRA_PROJECT_KEYS` — if set, ensure the keys match exactly (e.g. `KAN`, not `kan`).
+2. Confirm that the projects have open issues in the configured statuses.
+3. Force a full refresh without restarting the daemon:
+
+```bash
+python3 scripts/refresh_pm_tasks.py
+```
+
+You can also run a targeted refresh with custom JQL:
+
+```bash
+python3 scripts/refresh_pm_tasks.py --jql "project=KAN ORDER BY updated DESC"
+```
+
+</Accordion>
+
+<Accordion title="GitHub: 401 Unauthorized">
+
+A GitHub 401 means the personal access token is expired, revoked, or was created without the `repo` scope.
+
+1. Go to [github.com/settings/tokens](https://github.com/settings/tokens) and create a new classic PAT with at minimum the `repo` scope.
+2. Update `GITHUB_TOKEN` in `~/.meridian/.env` via `meridian config edit`.
+3. Restart: `meridian restart`.
+
+</Accordion>
+
+<Accordion title="Linear: no tasks are loading">
+
+1. Verify `LINEAR_API_KEY` is set correctly in `~/.meridian/.env`.
+2. Check `LINEAR_TEAM_IDS` — if set, confirm the team IDs are correct (visible in Linear's workspace settings URL).
+3. Ensure the teams have open issues in a status that the connector picks up.
+4. Check the jira-updater log (which also handles Linear sync) for error messages:
+
+```bash
+meridian logs jira-updater -n 100
+```
+
+</Accordion>
+
+---
+
+## MCP Server
+
+<Accordion title="AI tool says Meridian is not found or DB is missing">
+
+This error means the MCP server process could not find `~/.meridian/meridian.db`.
+
+1. Confirm the daemon is running and has processed at least one poll tick:
+
+```bash
+meridian status
+meridian logs daemon -n 50
+```
+
+2. Check that the database exists:
+
+```bash
+ls -lh ~/.meridian/meridian.db
+```
+
+3. If you edited the MCP config file (`~/Library/Application Support/Claude/claude_desktop_config.json`), verify that the path in `args` points to the actual repo location:
+
+```json
+{
+  "mcpServers": {
+    "meridian": {
+      "command": "node",
+      "args": ["/your/actual/path/to/meridian/packages/meridian-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+Use an absolute path — `~` is not expanded by all MCP hosts.
+
+</Accordion>
+
+<Accordion title="MCP server build fails">
+
+If `packages/meridian-mcp/dist/index.js` is missing or stale, rebuild it:
+
+```bash
+cd packages/meridian-mcp
+npm install
+npm run build
+```
+
+Then restart your MCP-compatible AI tool so it picks up the rebuilt server.
+
+</Accordion>
+
+---
+
+## macOS Permissions
+
+<Accordion title="screenpipe is not recording — no frames in the database">
+
+screenpipe requires Screen Recording permission to capture frames. Without it, the database stays empty and Meridian has nothing to process.
+
+Run the guided permissions walkthrough:
+
+```bash
+meridian permissions
+```
+
+The command opens the Screen Recording, Accessibility, and Microphone System Settings panes in sequence and waits for you to confirm each one. After granting access, restart the stack:
+
+```bash
+meridian restart
+```
+
+<Warning>
+You must restart screenpipe after granting Screen Recording permission. The permission change does not take effect for a running process.
+</Warning>
+
+</Accordion>
+
+<Accordion title="No audio transcription in sessions">
+
+Audio transcription requires the Microphone permission. screenpipe appears in the Microphone pane only after it has first tried to access the microphone — this happens automatically once Screen Recording is granted and screenpipe is running.
+
+If screenpipe is not listed in the Microphone pane yet:
+
+1. Ensure Screen Recording is already granted.
+2. Start screenpipe: `meridian start`.
+3. Wait a few seconds, then open System Settings → Privacy & Security → Microphone.
+4. Toggle screenpipe on.
+
+Alternatively, run `meridian permissions` to open all three panes in the correct order.
+
+</Accordion>
+
+---
+
+## Dashboard
+
+<Accordion title="http://localhost:3000 is not loading">
+
+1. Check whether the UI service is running:
+
+```bash
+meridian status    # look for com.meridiona.ui
+```
+
+2. If it is not running, check the logs:
+
+```bash
+meridian logs ui
+meridian logs ui-error
+```
+
+3. If the UI has not been built yet (e.g. after a fresh clone or `--no-ui` install), build it:
+
+```bash
+cd ui
+npm ci
+npm run build
+```
+
+4. Then bring the service back up:
+
+```bash
+meridian restart
+```
+
+</Accordion>
+
+---
+
+<Note>
+`meridian doctor` is always the best first step for any issue. It checks every dependency and running service in one command and tells you exactly what needs fixing.
+</Note>

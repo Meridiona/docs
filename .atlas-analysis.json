@@ -1,0 +1,99 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Meridian",
+  "projectDescription": "A local-first ambient automation daemon that reads screenpipe's activity recordings, structures them into app sessions, classifies each session by task and category, and automatically syncs time and context to Jira, GitHub Issues, and Linear — with zero manual input.",
+  "theme": "luma",
+  "primaryColor": "#6c6c6c",
+  "lightColor": "#080808",
+  "darkColor": "#e2e2e2",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "configuration"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/how-it-works",
+              "concepts/sessions",
+              "concepts/categories",
+              "concepts/task-classification"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/jira",
+              "guides/github-linear",
+              "guides/mcp-setup",
+              "guides/dashboard",
+              "guides/querying-data"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/cli",
+              "reference/environment-variables",
+              "reference/mcp-tools",
+              "reference/session-schema",
+              "reference/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Ambient screen activity recording via screenpipe integration",
+    "Automatic app session detection and boundary calculation",
+    "AI-powered activity categorization (coding, meeting, research, etc.)",
+    "AI task classification linking sessions to Jira, GitHub Issues, and Linear tickets",
+    "Automatic project management sync — updates tickets without manual input",
+    "MCP server exposing session data to Claude, Cursor, and other AI tools",
+    "Local-first: all data stays on-device, no cloud dependency",
+    "Local dashboard at http://localhost:3000 with timeline, stats, and category breakdown",
+    "Direct SQLite database access for custom queries",
+    "Minimal resource footprint (<1% CPU, <50 MB RAM)"
+  ],
+  "publicApiSurface": [
+    "meridian start",
+    "meridian stop",
+    "meridian restart",
+    "meridian status",
+    "meridian logs [target]",
+    "meridian doctor",
+    "meridian config edit",
+    "meridian permissions",
+    "meridian uninstall",
+    "./install.sh [--no-ui] [--dry-run] [--no-daemon] [--skip-permissions] [--skip-env] [--mlx]",
+    "MCP tool: get-sessions",
+    "MCP tool: get-timeline",
+    "MCP tool: get-stats",
+    "MCP tool: get-active-session",
+    "MCP tool: get-apps",
+    "MCP tool: search-sessions",
+    "MCP tool: get-session-detail",
+    "MCP tool: get-task-sessions",
+    "MCP tool: get-recent-sessions",
+    "MCP tool: get-task-breakdown",
+    "MCP tool: get-active-task",
+    "MCP tool: health-check",
+    "SCREENPIPE_DB env var",
+    "MERIDIAN_DB env var",
+    "POLL_INTERVAL_SECS env var",
+    "CLASSIFICATION_ENABLED env var",
+    "MLX_SERVER_PORT env var",
+    "JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN env vars",
+    "GITHUB_TOKEN / GITHUB_ORG / GITHUB_REPOS env vars",
+    "LINEAR_API_KEY / LINEAR_TEAM_IDS env vars"
+  ]
+}

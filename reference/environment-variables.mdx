@@ -1,0 +1,109 @@
+---
+title: "Meridian Environment Variables and Configuration Reference"
+sidebarTitle: "Environment Variables"
+description: "All environment variables Meridian reads from ~/.meridian/.env — core daemon, classification, Jira, GitHub, Linear, and MCP server settings."
+---
+
+Meridian reads its configuration from `~/.meridian/.env`, which the installer creates and populates during `./install.sh`. You can edit it at any time with `meridian config edit`. Changes take effect after a `meridian restart`.
+
+Every variable has a safe default; you only need to set the ones relevant to your workflow. The sections below list every supported variable grouped by the part of Meridian that reads it.
+
+---
+
+## Core Daemon
+
+These variables control how the Rust ETL daemon reads screenpipe data and writes to its own database.
+
+| Variable | Default | Description |
+|---|---|---|
+| `SCREENPIPE_DB` | `~/.screenpipe/db.sqlite` | Path to screenpipe's SQLite database. Meridian opens this file read-only. Change it only if you run screenpipe with a custom `--data-dir`. |
+| `MERIDIAN_DB` | `~/.meridian/meridian.db` | Path where Meridian creates and writes its own database. The MCP server reads from the same path. |
+| `POLL_INTERVAL_SECS` | `60` | How often (in seconds) the daemon wakes up to check for new screenpipe frames. Lower values give more granular sessions at the cost of slightly higher CPU usage. |
+| `CLASSIFICATION_ENABLED` | `true` | When `true`, the daemon sends each completed session to the MLX server for task classification. Set to `false` to run ETL and app-category tagging only, with no MLX server required. |
+| `MLX_SERVER_PORT` | `7823` | The port that the persistent MLX inference server listens on. Must match the value you passed to `install-mlx-server-daemon.sh`. |
+| `CLASSIFIER_BACKEND` | `hermes` | Classification backend. `hermes` is the default; set to `mlx` to use the local MLX inference server at `127.0.0.1:<MLX_SERVER_PORT>` instead. |
+| `CLASSIFICATION_TIMEOUT_S` | `120` | Maximum seconds the daemon waits for the MLX server to respond to a single session classification request before timing out and moving on. |
+| `RUST_LOG` | `meridian=info` | Log verbosity for the Rust daemon, passed directly to the `env_logger` crate. Use `meridian=debug` for verbose output during troubleshooting. |
+
+<Note>
+Setting `CLASSIFICATION_ENABLED=false` lets you run the full ETL pipeline — including session segmentation and app-category tagging — without starting the MLX server at all. This is useful on machines without Apple Silicon, or when you only need raw session data.
+</Note>
+
+---
+
+## Jira
+
+All three credential variables must be set for the Jira connector to activate. The connector fetches open issues and the classification pipeline links sessions to ticket keys.
+
+| Variable | Default | Description |
+|---|---|---|
+| `JIRA_BASE_URL` | *(none)* | Your Atlassian instance URL, e.g. `https://your-org.atlassian.net`. |
+| `JIRA_EMAIL` | *(none)* | The email address of the Atlassian account whose API token you are using. |
+| `JIRA_API_TOKEN` | *(none)* | A Jira API token. Generate one at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens). |
+| `JIRA_PROJECT_KEYS` | *(all projects)* | Comma-separated list of project keys to sync, e.g. `KAN,ENG`. When empty, all projects the account can access are included. |
+
+---
+
+## GitHub
+
+Both credential variables must be set to enable the GitHub connector. Meridian fetches open issues and pull requests from the specified organisation and links them to sessions alongside Jira tickets.
+
+| Variable | Default | Description |
+|---|---|---|
+| `GITHUB_TOKEN` | *(none)* | A GitHub personal access token with at least the `repo` scope. Create one at [github.com/settings/tokens](https://github.com/settings/tokens). |
+| `GITHUB_ORG` | *(none)* | The GitHub organisation name to sync, e.g. `your-org`. |
+| `GITHUB_REPOS` | *(all org repos)* | Comma-separated list of `org/repo` slugs to sync, e.g. `your-org/api,your-org/web`. When empty, all repositories in the organisation are included. |
+
+---
+
+## Linear
+
+Set `LINEAR_API_KEY` to enable the Linear connector.
+
+| Variable | Default | Description |
+|---|---|---|
+| `LINEAR_API_KEY` | *(none)* | Your Linear API key. Find it at [linear.app/settings/api](https://linear.app/settings/api). |
+| `LINEAR_TEAM_IDS` | *(all teams)* | Comma-separated Linear team IDs to sync, e.g. `TEAM1,TEAM2`. When empty, all teams the key can access are included. |
+
+---
+
+## MCP Server
+
+The MCP server reads one variable at startup to locate the database.
+
+| Variable | Default | Description |
+|---|---|---|
+| `MERIDIAN_DB` | `~/.meridian/meridian.db` | Override the database path for the MCP server process. Useful if you maintain multiple Meridian databases or run the MCP server from a non-standard environment. |
+
+---
+
+## Minimal Example Configuration
+
+The block below shows the minimum set of variables needed to run the full Meridian stack with Jira classification enabled. Copy it to `~/.meridian/.env` and fill in your values, or use `meridian config edit` to open the file directly.
+
+```bash
+# ~/.meridian/.env
+
+# ── Core ──────────────────────────────────────────────────────────────────────
+POLL_INTERVAL_SECS=60
+CLASSIFICATION_ENABLED=true
+MLX_SERVER_PORT=7823
+RUST_LOG=meridian=info
+
+# ── Jira ──────────────────────────────────────────────────────────────────────
+JIRA_BASE_URL=https://your-org.atlassian.net
+JIRA_EMAIL=you@your-org.com
+JIRA_API_TOKEN=your-api-token-here
+JIRA_PROJECT_KEYS=KAN,ENG
+
+# ── GitHub ────────────────────────────────────────────────────────────────────
+GITHUB_TOKEN=ghp_your_personal_access_token
+GITHUB_ORG=your-org
+
+# ── Linear ────────────────────────────────────────────────────────────────────
+LINEAR_API_KEY=lin_api_your_key_here
+```
+
+<Tip>
+After editing `~/.meridian/.env`, run `meridian restart` to apply the new values. The daemon reads the file once at startup and does not hot-reload changes.
+</Tip>

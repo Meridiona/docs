@@ -1,0 +1,185 @@
+---
+title: "Expose Your Meridian Session Data to AI Tools via MCP"
+sidebarTitle: "MCP Setup"
+description: "Connect Claude, Cursor, or any MCP-compatible AI tool to your local Meridian session database so you can ask natural-language questions about your workday."
+---
+
+Meridian ships a TypeScript MCP (Model Context Protocol) server that gives any compatible AI tool read access to your local session database. Once connected, you can ask your AI assistant things like "what did I work on today?", "which Jira ticket did I spend the most time on?", or "what app am I using right now?" — and get answers drawn directly from your real activity data.
+
+The MCP server opens `~/.meridian/meridian.db` in read-only mode on each tool call, so the AI always sees up-to-date session data without any manual syncing.
+
+## How the MCP server is built
+
+`./install.sh` builds the MCP server automatically into `packages/meridian-mcp/dist/index.js`. If you need to rebuild it manually — for example after updating the repository — run:
+
+```bash
+cd packages/meridian-mcp && npm run build
+```
+
+The server uses [sql.js](https://github.com/sql-js/sql.js) (pure WebAssembly SQLite) so it works with any Node.js version without native module compilation.
+
+## Add Meridian to your AI tool
+
+<Tabs>
+  <Tab title="Claude Desktop">
+    Open (or create) the Claude Desktop configuration file:
+
+    ```
+    ~/Library/Application Support/Claude/claude_desktop_config.json
+    ```
+
+    Add the `meridian` entry inside `mcpServers`. Replace `/path/to/meridian` with the absolute path to your cloned repository:
+
+    ```json
+    {
+      "mcpServers": {
+        "meridian": {
+          "command": "node",
+          "args": ["/path/to/meridian/packages/meridian-mcp/dist/index.js"]
+        }
+      }
+    }
+    ```
+
+    Save the file, then quit and relaunch Claude Desktop. The Meridian tools will appear automatically in the tool picker.
+
+    <Tip>
+      You can find your repo path by running `pwd` inside the `meridian` directory.
+    </Tip>
+  </Tab>
+
+  <Tab title="Claude Code">
+    Add Meridian to your project's `.mcp.json` file, or use the Claude Code CLI to register it globally.
+
+    **Option A — project `.mcp.json`:**
+
+    Create or edit `.mcp.json` in your project root:
+
+    ```json
+    {
+      "mcpServers": {
+        "meridian": {
+          "command": "node",
+          "args": ["/path/to/meridian/packages/meridian-mcp/dist/index.js"]
+        }
+      }
+    }
+    ```
+
+    **Option B — Claude Code CLI (global):**
+
+    ```bash
+    claude mcp add meridian node /path/to/meridian/packages/meridian-mcp/dist/index.js
+    ```
+
+    Replace `/path/to/meridian` with the absolute path to your cloned repository. Run `claude mcp list` to confirm Meridian appears in the registered servers.
+  </Tab>
+
+  <Tab title="Cursor">
+    Open Cursor's settings and navigate to **Features → MCP Servers**. Click **Add new MCP server** and fill in:
+
+    - **Name:** `meridian`
+    - **Command:** `node`
+    - **Args:** `/path/to/meridian/packages/meridian-mcp/dist/index.js`
+
+    Alternatively, edit your Cursor MCP config file directly (usually `~/.cursor/mcp.json`):
+
+    ```json
+    {
+      "mcpServers": {
+        "meridian": {
+          "command": "node",
+          "args": ["/path/to/meridian/packages/meridian-mcp/dist/index.js"]
+        }
+      }
+    }
+    ```
+
+    Restart Cursor after saving the config.
+  </Tab>
+</Tabs>
+
+## Override the database path
+
+By default the MCP server reads `~/.meridian/meridian.db`. To point it at a different database file, set the `MERIDIAN_DB` environment variable in your MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "meridian": {
+      "command": "node",
+      "args": ["/path/to/meridian/packages/meridian-mcp/dist/index.js"],
+      "env": {
+        "MERIDIAN_DB": "/custom/path/to/meridian.db"
+      }
+    }
+  }
+}
+```
+
+## What you can ask your AI tool
+
+Once connected, the AI has access to the following tools. You don't need to invoke them by name — just ask naturally and the AI will choose the right one.
+
+<CardGroup cols={2}>
+  <Card title="get-sessions" icon="list">
+    "What apps did I use today?" / "How long was I in VS Code this morning?"
+  </Card>
+  <Card title="get-timeline" icon="clock">
+    "Walk me through my day." / "What was I doing at 3 PM?" / "How many breaks did I take?"
+  </Card>
+  <Card title="get-stats" icon="chart-bar">
+    "How productive was I today?" / "What app did I spend the most time in?"
+  </Card>
+  <Card title="get-active-session" icon="circle-dot">
+    "What am I doing right now?" / "What app is currently active?"
+  </Card>
+  <Card title="get-active-task" icon="ticket">
+    "What Jira ticket am I working on right now?" / "What should I log time against?"
+  </Card>
+  <Card title="get-task-sessions" icon="link">
+    "What did I do on KAN-108 today?" / "How long have I spent on this ticket?"
+  </Card>
+  <Card title="get-task-breakdown" icon="chart-pie">
+    "How much time per ticket today?" / "How was my time split across Jira tickets?"
+  </Card>
+  <Card title="get-recent-sessions" icon="history">
+    "What did I do in the last 2 hours?" / "What have I been working on since lunch?"
+  </Card>
+  <Card title="search-sessions" icon="magnifying-glass">
+    "When did I work on the Stripe integration?" / "Find sessions where I was in a meeting."
+  </Card>
+  <Card title="get-apps" icon="grid">
+    "Which apps do I use most overall?" / "When did I last use Slack?"
+  </Card>
+  <Card title="get-session-detail" icon="file-lines">
+    Full OCR text and window content for a specific session by ID.
+  </Card>
+  <Card title="health-check" icon="heart-pulse">
+    "Is the Meridian daemon running?" / last sync status and session count.
+  </Card>
+</CardGroup>
+
+For the complete input schema and parameter reference for each tool, see [MCP Tools Reference](/reference/mcp-tools).
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="The AI says it can't find Meridian or the database">
+    Check two things:
+
+    1. **The daemon is running.** Run `meridian status` — all four services (screenpipe, daemon, jira-updater, ui) should show as running.
+    2. **The database exists.** Run `ls -lh ~/.meridian/meridian.db`. If the file is missing, the daemon hasn't written any sessions yet. Wait for the first 60-second poll cycle to complete.
+
+    If the path is correct and the daemon is running, confirm the `args` path in your MCP config points to the actual `dist/index.js` file with no typos.
+  </Accordion>
+  <Accordion title="Tools appear but return stale data">
+    The MCP server loads the database file fresh on every tool call, so data should never be more than 60 seconds old (one daemon poll cycle). If results seem stale, run `meridian logs` to confirm the daemon is actively writing new sessions.
+  </Accordion>
+  <Accordion title="Node.js version errors on startup">
+    The MCP server uses sql.js (pure WebAssembly) instead of native SQLite bindings, so it is compatible with any modern Node.js version. If you see unexpected errors, rebuild the server with `cd packages/meridian-mcp && npm run build` and ensure you're on Node 18 or later.
+  </Accordion>
+  <Accordion title="Task-linked tools return no results">
+    Tools like `get-task-sessions`, `get-task-breakdown`, and `get-active-task` require the AI classifier to have linked sessions to tickets. Confirm that `CLASSIFICATION_ENABLED=true` in `~/.meridian/.env` and that at least one Jira, GitHub, or Linear integration is configured. Check `meridian doctor` for the classifier status.
+  </Accordion>
+</AccordionGroup>

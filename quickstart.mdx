@@ -1,0 +1,145 @@
+---
+title: "Quickstart: From Zero to a Running Meridian Install"
+sidebarTitle: "Quickstart"
+description: "Clone Meridian, grant screenpipe permissions, enter your credentials, and get automatic ticket updates flowing — step by step, from zero to running."
+---
+
+This guide walks you through getting Meridian running on your machine for the first time. By the end you'll have all background daemons running, your PM credentials configured, and your first activity sessions appearing in the dashboard. The whole process takes about 15 minutes, mostly waiting for Rust to compile and the MLX model to download on its first run.
+
+<Tip>
+  Run `./install.sh --dry-run` to preview every action the installer would take without actually executing anything. This is a good way to understand the installation before committing to it.
+</Tip>
+
+<Steps>
+  <Step title="Clone the repository and run the installer">
+    Clone Meridian and run `install.sh` from the repository root. The installer detects missing prerequisites (Homebrew, Rust, Node 18+, Python 3.13, screenpipe) and offers to install each one before proceeding. It then builds the Rust daemon, the MCP server, the Next.js dashboard, and the Python services, and registers background launchd agents for each service.
+
+    ```bash
+    git clone https://github.com/meridiona/meridian
+    cd meridian
+    ./install.sh
+    ```
+
+    The following flags are available if you want to customise the installation:
+
+    | Flag | Effect |
+    |---|---|
+    | `--no-ui` | Skip building the Next.js dashboard |
+    | `--dry-run` | Preview all actions without executing any of them |
+    | `--no-daemon` | Build everything but do not register launchd agents |
+    | `--skip-permissions` | Skip the macOS permissions walkthrough |
+    | `--skip-env` | Skip the interactive credential prompts entirely |
+    | `--mlx` | Set up the persistent MLX inference server for task classification |
+
+  </Step>
+  <Step title="Grant screenpipe the required macOS permissions">
+    screenpipe needs three macOS privacy permissions to record your screen activity. The installer walks you through each one interactively. If you skipped that step or need to re-grant permissions later, run:
+
+    ```bash
+    meridian permissions
+    ```
+
+    The three permissions screenpipe requires are:
+
+    - **Screen Recording** — to capture frames and OCR text
+    - **Accessibility** — to read window titles and accessibility tree events
+    - **Microphone** — to transcribe audio (optional but recommended for meeting context)
+
+    <Note>
+      For Screen Recording and Accessibility, click the **+** button in the System Settings pane, navigate to the screenpipe binary, and toggle it on. The Microphone pane works differently — screenpipe will appear there automatically after it first requests mic access. If it isn't listed yet, grant Screen Recording first, then check back.
+    </Note>
+  </Step>
+  <Step title="Configure your credentials">
+    Immediately after the build, the installer prompts you for credentials grouped by service. Press **Enter** on any prompt to skip that variable — you can always add it later.
+
+    The installer collects:
+
+    - **OpenRouter API key** (`OPENROUTER_API_KEY`) — for cloud LLM inference. Skip this if you're running entirely local with MLX.
+    - **Jira** — your Atlassian base URL, email address, API token, and optionally a comma-separated list of project keys to scope ticket lookups.
+    - **GitHub** — a personal access token, your org name, and optionally a comma-separated list of repos.
+    - **Linear** — an API key and optionally a comma-separated list of team IDs.
+
+    Values you've already entered are preserved on re-runs; the installer never overwrites an existing value. To update a credential after installation, run:
+
+    ```bash
+    meridian config edit
+    ```
+
+    This opens `~/.meridian/.env` in your `$EDITOR`. See the [Configuration](/configuration) page for the full variable reference.
+  </Step>
+  <Step title="Start Meridian">
+    Bring all daemons up with a single command:
+
+    ```bash
+    meridian start
+    ```
+
+    Then confirm everything is running:
+
+    ```bash
+    meridian status
+    ```
+
+    You should see all services — `com.meridiona.screenpipe`, `com.meridiona.daemon`, `com.meridiona.jira-updater`, `com.meridiona.ui`, `com.meridiona.mlx-server`, and `com.meridiona.coding-agent-indexer` — reported as running with their process IDs.
+
+    <Note>
+      **MLX inference server for task classification.** If you installed with `--mlx`, Meridian uses a persistent MLX inference server (Qwen3.5-9B, running on-device via Metal) for session-to-ticket classification. On first start, the model downloads to your local cache (~6.6 GB) — this can take a few minutes depending on your connection speed. Subsequent starts load from cache in around 5 seconds. Watch the server come up with `meridian logs mlx-server`. If you haven't set up the MLX server, set `CLASSIFICATION_ENABLED=false` in `~/.meridian/.env` to run in activity-tracking mode without ticket classification.
+    </Note>
+  </Step>
+  <Step title="Open the dashboard">
+    Once the daemons are running, open your browser to:
+
+    ```
+    http://localhost:3000
+    ```
+
+    The dashboard shows a real-time timeline of your app sessions, coloured by activity category, with a daily breakdown chart and session detail views. New sessions appear every 60 seconds as the daemon processes the latest screenpipe frames.
+  </Step>
+</Steps>
+
+## Useful commands after starting
+
+Once Meridian is running, the following commands are the ones you'll reach for most often:
+
+```bash
+# Tail the daemon log (last 100 lines)
+meridian logs
+
+# Stream the daemon log live
+meridian logs -f
+
+# Tail a specific service log
+meridian logs daemon-error
+meridian logs jira-updater
+meridian logs screenpipe
+meridian logs screenpipe-error
+meridian logs ui
+meridian logs ui-error
+meridian logs mlx-server
+meridian logs coding-agent-indexer
+
+# Run environment health checks
+meridian doctor
+
+# Stop all daemons
+meridian stop
+
+# Restart all daemons
+meridian restart
+```
+
+`meridian doctor` checks that all plists are installed and valid, that screenpipe is running and has a database, that your Python virtualenv is set up, that the MCP server is built, and that the dashboard has been compiled. Run it any time something looks wrong.
+
+## Troubleshooting
+
+<Accordion title="meridian status shows a daemon as 'not running'">
+  Run `meridian doctor` to identify the specific failure. Common causes are a missing `~/.meridian/.env` file (run `./install.sh` to create it), or a missing screenpipe database (start screenpipe first, then run `meridian start`).
+</Accordion>
+
+<Accordion title="The dashboard at localhost:3000 isn't loading">
+  Check the UI log: `meridian logs ui`. If the build is missing, the installer may have been run with `--no-ui`. Rebuild by running `cd ui && npm ci && npm run build`, then restart with `meridian restart`.
+</Accordion>
+
+<Accordion title="Sessions are appearing but no tickets are being updated">
+  Confirm your PM credentials are set: `meridian config edit`. Ensure `CLASSIFICATION_ENABLED=true` and that the MLX server is running (`meridian logs mlx-server`). Run `meridian doctor` to verify the jira-updater is installed and check `meridian logs jira-updater` for any API errors.
+</Accordion>

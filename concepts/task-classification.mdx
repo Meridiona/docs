@@ -1,0 +1,110 @@
+---
+title: "Task Classification: Linking Sessions to Jira Tickets"
+sidebarTitle: "Task Classification"
+description: "Learn how Meridian uses on-device AI to match every work session to a specific Jira, GitHub, or Linear ticket — with no manual tagging required."
+---
+
+Task classification is Meridian's most powerful feature. After the ETL layer creates a session, a second AI pass asks a sharper question: *which specific ticket was this session for?* The answer gets written to the `ticket_links` table, and from there Meridian can update the corresponding Jira issue, GitHub issue, or Linear task automatically — without you ever touching it.
+
+<Tip>
+  Task classification requires valid credentials for at least one PM tool (Jira, GitHub, or Linear) and a list of active tickets in that system. Meridian fetches your open tickets to use as candidates during classification. Without tickets to match against, the classifier has nothing to link sessions to.
+</Tip>
+
+## Signals the classifier reads
+
+The classifier builds a picture of what you were doing in a session by reading every piece of context the ETL layer collected:
+
+<CardGroup cols={2}>
+  <Card title="Window titles" icon="window">
+    The exact titles of windows and browser tabs open during the session, including branch names visible in editor title bars and PR titles in browser tabs.
+  </Card>
+  <Card title="OCR text" icon="scan-text">
+    Text sampled from the screen — code filenames, error messages, ticket IDs typed or visible on screen, URLs in the address bar.
+  </Card>
+  <Card title="Git branch names" icon="git-branch">
+    Branch names visible in terminal prompts, VS Code's status bar, or editor title bars. A branch like `feat/KAN-108-add-auth` is a strong classification signal.
+  </Card>
+  <Card title="Terminal context" icon="terminal">
+    Commands run and their output, as captured by screenpipe's OCR on terminal windows. Build commands, test output, and file paths all contribute.
+  </Card>
+</CardGroup>
+
+The classifier also reads clipboard content captured in the `signals` field — if you copied a ticket ID or a commit SHA during a session, that becomes part of the evidence.
+
+## How classification results are stored
+
+When the classifier links a session to a ticket, it writes a row to the `ticket_links` table in `meridian.db` connecting the session ID to the ticket key (e.g. `KAN-108`), along with a confidence score and the method used to make the match. The session row itself is also updated with the `task_key` directly, so queries that need both the session and its linked ticket don't require a join.
+
+The `pm_tasks` table holds metadata about your tickets — title, status, URL — fetched from Jira, GitHub, or Linear. This is what gets updated when Meridian pushes progress back to your PM tools.
+
+## Driving automatic PM sync
+
+Once a session is classified, Meridian's PM sync component aggregates activity across all sessions linked to the same ticket and pushes an update. On Jira, this can mean logging time, updating the ticket status, or adding a comment with a summary of the work done. The update happens in the background without any prompt or confirmation from you.
+
+Classification and sync run on the same 60-second polling loop as the ETL runner, so your tickets stay current throughout the day.
+
+## The MLX inference server
+
+Task classification runs entirely on your machine using a persistent MLX inference server powered by the **Qwen3.5-9B** model. The server loads the model into memory once at startup (roughly 30 seconds on first run while the model downloads; about 5 seconds from cache on subsequent starts) and then handles classification requests from the Meridian daemon over a local HTTP connection on port 7823.
+
+<Steps>
+  <Step title="Start the MLX server">
+    Install and start the server as a launchd daemon so it survives reboots:
+
+    ```bash
+    bash services/scripts/install-mlx-server-daemon.sh
+    ```
+
+    Or run it manually in a terminal for development:
+
+    ```bash
+    cd services
+    .venv313/bin/meridian-server --backend mlx --port 7823
+    ```
+  </Step>
+  <Step title="Wait for the model to be ready">
+    Watch the log until you see `server: MLX model ready`:
+
+    ```bash
+    tail -f ~/.meridian/logs/mlx-server.log
+    ```
+  </Step>
+  <Step title="Start the Meridian daemon">
+    The daemon TCP-connects to the MLX server at startup to verify it is reachable. If the server isn't running, the daemon exits immediately with a clear error.
+
+    ```bash
+    meridian start
+    ```
+  </Step>
+</Steps>
+
+## Disabling classification
+
+If you don't need ticket linking — or if you're running on a machine without Apple Silicon — you can disable classification entirely:
+
+```bash
+# In ~/.meridian/.env
+CLASSIFICATION_ENABLED=false
+```
+
+With classification disabled, the ETL runner and AI categorizer continue to run normally. You get structured sessions with activity categories, but no ticket links and no PM sync. The MLX server is not required.
+
+<Warning>
+  The MLX inference server requires Apple Silicon (M1 or later) and macOS 13+. Classification is not available on Intel Macs.
+</Warning>
+
+## Querying classification results with MCP
+
+If you use an MCP-compatible AI tool like Claude or Cursor, two tools give you direct access to classification results:
+
+- **`get-active-task`** — returns the Jira ticket currently being worked on, combining the active app session with the classifier's most recent inference. Use this to answer *"what ticket should I log time against right now?"*
+
+- **`get-task-sessions`** — returns all sessions linked to a specific ticket key (e.g. `KAN-108`) for a given date or time window. More precise than a text search because it uses the classifier's semantic matching rather than keyword matching. Pass `include_content=true` to also retrieve OCR and audio text from each session.
+
+```bash
+# Example: ask Claude what you've done on KAN-108 today
+# (via MCP, inside Claude Code or Claude Desktop)
+# "Show me all the work I've done on KAN-108 today"
+```
+
+Both tools read from the `ticket_links` and `pm_tasks` tables that classification writes to, so the data they return is always the result of the same on-device AI inference that drives PM sync.

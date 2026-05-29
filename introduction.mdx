@@ -1,0 +1,80 @@
+---
+title: "Meridian: Stop Updating Tickets and Start Shipping"
+sidebarTitle: "Introduction"
+description: "Understand what Meridian does, the problem it solves, its core capabilities, and what you need on your machine before you install."
+---
+
+Developers lose hours every week on project management overhead — updating ticket status, logging time, writing standup notes, moving cards across boards. The information required to do all of that already exists on your screen: in the code you're writing, the PRs you're reviewing, the terminals you're running. Meridian captures that context automatically, structures it into labelled work sessions, and pushes updates to the right ticket without you ever switching windows.
+
+## The problem Meridian solves
+
+Every minute you spend on PM overhead is a minute not spent building. The mismatch between what actually happened and what gets logged in your tickets is a constant source of noise for teams: stale statuses, missing time entries, forgotten context. Meridian removes the manual step entirely by watching what you do and keeping your project management tools in sync on your behalf.
+
+## How Meridian works
+
+Meridian runs as a lightweight background daemon alongside [screenpipe](https://screenpi.pe), which continuously records your screen activity as raw frames — OCR text, accessibility tree events, audio transcriptions — stored locally in a SQLite database. Every 60 seconds (configurable), Meridian reads those frames, detects app-switch boundaries, and closes each completed work block as a structured **app session** in its own database.
+
+Each session captures the app you were using, how long you used it, the window titles and OCR text it observed, and the clipboard and app-switch signals it detected. From that structured data, Meridian's classification layer links the session to the specific Jira, GitHub, or Linear ticket you were working on, then automatically updates that ticket.
+
+## Key capabilities
+
+**Session processing** — The core pipeline reads screenpipe's raw frames, detects focus boundaries, deduplicates OCR and accessibility samples, and writes clean, gap-free activity sessions to a local SQLite database. Processing is safe to re-run: running the pipeline again on the same frames always produces the same result.
+
+**Activity categorisation** — Every session receives an AI-assigned category (`coding`, `meeting`, `research`, `communication`, `design`, `documentation`, `planning`, `deployment_devops`, `idle_personal`) with a confidence score. The local dashboard uses these categories to colour your timeline, badge sessions, and render a daily breakdown chart.
+
+**Task classification and PM sync** — Meridian's classification layer reads OCR text, window titles, URLs, git branch names, and terminal context to determine which specific ticket each session belongs to. Once linked, the Jira updater, GitHub connector, and Linear connector push updates automatically — no manual input required.
+
+**MCP server** — Meridian ships a TypeScript MCP server that exposes your structured session data to any MCP-compatible AI tool, including Claude Code, Claude Desktop, and Cursor. Query your activity history in plain language, ask for summaries, or feed live context into your AI assistant.
+
+**Local dashboard** — A Next.js UI at `http://localhost:3000` gives you a real-time timeline of your sessions, daily category breakdowns, and session detail views. It reads directly from the local database and requires no account or login.
+
+## System requirements
+
+Before installing, confirm your machine meets the following requirements:
+
+| Requirement | Version / Notes |
+|---|---|
+| **macOS** | 13 or later, Apple Silicon (the MLX inference server requires Metal) |
+| **screenpipe** | Must be installed and running before Meridian starts |
+| **Rust** | 1.93.1 — the installer picks up `rust-toolchain.toml` automatically |
+| **Python** | 3.13 — install via `brew install python@3.13` or `pyenv install 3.13` |
+| **Node.js** | 18 or later — required for the MCP server and dashboard |
+
+The installer detects any missing prerequisites and offers to install them via Homebrew before proceeding.
+
+<Note>
+  **Local-first by design.** Meridian never sends your screen recordings, OCR text, or session data to any remote server. All inference runs on-device via the MLX server. The only outbound network calls are the ticket updates you explicitly configure — to your own Jira instance, GitHub org, or Linear workspace.
+</Note>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Install Meridian, grant permissions, and see your first sessions in the dashboard.
+  </Card>
+  <Card
+    title="Configuration"
+    icon="sliders"
+    href="/configuration"
+  >
+    Explore every environment variable and learn how to tune Meridian for your workflow.
+  </Card>
+  <Card
+    title="MCP Server Setup"
+    icon="plug"
+    href="/guides/mcp-setup"
+  >
+    Wire your session data into Claude, Cursor, or any MCP-compatible AI tool.
+  </Card>
+  <Card
+    title="CLI Reference"
+    icon="terminal"
+    href="/reference/cli"
+  >
+    Full reference for every `meridian` command and flag.
+  </Card>
+</CardGroup>

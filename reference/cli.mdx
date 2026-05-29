@@ -1,0 +1,237 @@
+---
+title: "Meridian CLI Reference: Commands, Flags, and Usage"
+sidebarTitle: "CLI Reference"
+description: "Complete reference for every meridian CLI command and install.sh flag, including start, stop, logs, doctor, config, permissions, and uninstall."
+---
+
+The `meridian` CLI is a bash script that wraps macOS launchd, letting you manage all Meridian daemons without touching `launchctl` directly. After installation, the script is symlinked into `/usr/local/bin/meridian` (or `~/.local/bin/meridian`) so you can call it from any directory.
+
+---
+
+## Commands
+
+<Accordion title="meridian start">
+
+```bash
+meridian start
+```
+
+Enables and bootstraps every Meridian LaunchAgent, then prints a live status summary. The daemons started are, in order:
+
+| Label | Service |
+|---|---|
+| `com.meridiona.screenpipe` | screenpipe ambient recorder |
+| `com.meridiona.daemon` | Meridian Rust ETL daemon |
+| `com.meridiona.jira-updater` | Jira / GitHub / Linear sync |
+| `com.meridiona.ui` | Next.js dashboard at http://localhost:3000 |
+| `com.meridiona.mlx-server` | MLX inference server |
+| `com.meridiona.coding-agent-indexer` | Coding-agent context indexer |
+
+If any `.plist` file is missing, `meridian start` prints an error for that service and exits with a non-zero code. Run `./install.sh` to reinstall missing plists.
+
+<Note>
+The Rust daemon TCP-connects to the MLX server at startup to verify it is reachable. If the MLX server is not running, the daemon exits immediately. Start all services together with `meridian start` rather than launching them individually.
+</Note>
+
+</Accordion>
+
+<Accordion title="meridian stop">
+
+```bash
+meridian stop
+```
+
+Disables and boots out every LaunchAgent, then kills any orphaned `mlx_lm.server` processes that launchd does not track. The `.plist` files in `~/Library/LaunchAgents/` are left in place so `meridian start` can bring everything back up.
+
+Use this command before editing `~/.meridian/.env` so the daemon picks up the new values on the next `meridian start`.
+
+</Accordion>
+
+<Accordion title="meridian restart">
+
+```bash
+meridian restart
+```
+
+Runs `meridian stop`, waits one second, then runs `meridian start`. Use this after changing environment variables or rebuilding the daemon binary.
+
+</Accordion>
+
+<Accordion title="meridian status">
+
+```bash
+meridian status
+```
+
+Queries launchd for the running state of every registered service and prints a colour-coded summary:
+
+- **✓ running (pid N)** — service is up and has a PID
+- **⊘ loaded but not running** — launchd has the plist but the process is not active (e.g. the jira-updater between scheduled slots)
+- **✗ not installed** — plist is missing; run `./install.sh`
+
+Run `meridian status` any time you are unsure whether the stack is up.
+
+</Accordion>
+
+<Accordion title="meridian logs [target] [-f] [-n N]">
+
+```bash
+meridian logs [target] [-f] [-n N]
+```
+
+Tails a log file from `~/.meridian/logs/`. All arguments are optional.
+
+**Valid targets**
+
+| Target | File |
+|---|---|
+| `daemon` *(default)* | `~/.meridian/logs/daemon.log` |
+| `daemon-error` | `~/.meridian/logs/daemon-error.log` |
+| `jira-updater` | `~/.meridian/logs/jira-updater.log` |
+| `screenpipe` | `~/.meridian/logs/screenpipe.log` |
+| `screenpipe-error` | `~/.meridian/logs/screenpipe-error.log` |
+| `ui` | `~/.meridian/logs/ui.log` |
+| `ui-error` | `~/.meridian/logs/ui-error.log` |
+| `mlx-server` | `~/.meridian/logs/mlx-server.log` |
+| `coding-agent-indexer` | `~/.meridian/logs/coding-agent-indexer.log` |
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `-f` | Follow (stream) the log in real time |
+| `-n N` | Show the last N lines (default: 100) |
+
+**Examples**
+
+```bash
+# Stream the Rust daemon log live
+meridian logs daemon -f
+
+# Last 50 lines of the MLX server log
+meridian logs mlx-server -n 50
+
+# Tail errors from screenpipe
+meridian logs screenpipe-error
+```
+
+</Accordion>
+
+<Accordion title="meridian doctor">
+
+```bash
+meridian doctor
+```
+
+Runs a full suite of environment health checks and prints a pass/fail result for each one. Checks include:
+
+- macOS detected
+- `meridian-daemon` binary exists and is executable
+- Service `.plist` files are installed and pass `plutil -lint` (daemon, jira-updater, screenpipe, UI)
+- Daemon process is running
+- `~/.meridian/.env` configuration file exists
+- screenpipe binary is in `$PATH`
+- screenpipe database exists at `~/.screenpipe/db.sqlite`
+- screenpipe process is running
+- Python venv is set up and `run_agent` is importable
+- MCP server has been built (`packages/meridian-mcp/dist/index.js` exists)
+- Next.js UI has been built (`ui/.next` directory exists)
+
+At the end, `doctor` prints a count of failed checks. A clean run looks like:
+
+```
+✓ all checks passed
+```
+
+Run `meridian doctor` as the first diagnostic step whenever something seems wrong.
+
+</Accordion>
+
+<Accordion title="meridian config edit">
+
+```bash
+meridian config edit
+```
+
+Opens `~/.meridian/.env` in your `$EDITOR` (falls back to `nano` if `$EDITOR` is not set). This is the canonical way to update API keys, change the poll interval, or toggle classification without hunting for the file path.
+
+After saving, run `meridian restart` so the daemon picks up the new values.
+
+<Tip>
+You can also set `$EDITOR` to any editor you prefer before calling this command:
+
+```bash
+EDITOR=code meridian config edit
+```
+</Tip>
+
+</Accordion>
+
+<Accordion title="meridian permissions">
+
+```bash
+meridian permissions
+```
+
+Walks you interactively through the three macOS privacy panes that screenpipe requires:
+
+1. **Screen Recording** — opens the System Settings pane; click `+`, navigate to the screenpipe binary, add it, and toggle it on.
+2. **Accessibility** — same steps.
+3. **Microphone** — screenpipe appears here only after it first requests mic access. Grant Screen Recording first if screenpipe is not listed yet.
+
+After each step the script waits for you to press Enter. Run `meridian restart` afterwards so screenpipe picks up the newly granted permissions.
+
+<Warning>
+Without Screen Recording permission, screenpipe cannot capture frames and Meridian will have no data to process.
+</Warning>
+
+</Accordion>
+
+<Accordion title="meridian uninstall">
+
+```bash
+meridian uninstall
+```
+
+Prompts for confirmation, then stops all daemons, runs each service's uninstall script, kills orphaned `mlx_lm.server` processes, and removes the `meridian` and `meridian-daemon` symlinks from `/usr/local/bin/` and `~/.local/bin/`.
+
+Your data at `~/.meridian/` is **not** removed. Delete it manually if you want to wipe everything:
+
+```bash
+rm -rf ~/.meridian
+```
+
+</Accordion>
+
+---
+
+## install.sh Flags
+
+The installer (`./install.sh`) accepts flags that let you customise or automate the setup process.
+
+<CardGroup cols={2}>
+  <Card title="--no-ui" icon="window-minimize">
+    Skip the Next.js dashboard build. Useful on headless machines or when you only need the daemon and MCP server.
+  </Card>
+  <Card title="--dry-run" icon="eye">
+    Preview every action the installer would take without executing any of them. Helpful for auditing the setup on a new machine.
+  </Card>
+  <Card title="--no-daemon" icon="server">
+    Build all binaries but do not register any launchd agents. Use this if you want to manage service startup yourself.
+  </Card>
+  <Card title="--skip-permissions" icon="shield">
+    Skip the interactive macOS permissions walkthrough. Useful when re-running the installer after permissions are already granted, or in scripted environments.
+  </Card>
+  <Card title="--skip-env" icon="key">
+    Skip all credential prompts entirely. Existing values in the `.env` files are preserved. Use alongside `--skip-permissions` for fully non-interactive re-installs.
+  </Card>
+  <Card title="--mlx" icon="microchip">
+    Install and register the persistent MLX inference server as a launchd daemon. Requires Apple Silicon. Enables faster, on-device session classification with no external API calls.
+  </Card>
+</CardGroup>
+
+**Example — build only, no prompts, no daemon registration:**
+
+```bash
+./install.sh --no-daemon --skip-permissions --skip-env
+```
