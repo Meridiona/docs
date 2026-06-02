@@ -8,13 +8,17 @@ Meridian includes a Next.js dashboard that gives you a live, browser-based view 
 
 ## Opening the dashboard
 
-The dashboard starts automatically when you run `meridian start` and listens on port 3000. To open it, navigate to:
+The dashboard starts automatically when you run `meridian start` and listens on port 3939 by default. To open it, navigate to:
 
 ```
-http://localhost:3000
+http://localhost:3939
 ```
 
 Any browser works. You can keep it open as a background tab while you work.
+
+<Tip>
+  To run the dashboard on a different port — for example, if 3939 conflicts with another process — set `MERIDIAN_UI_PORT` in `~/.meridian/.env` and run `meridian restart`. The installer bakes the value into the UI launchd agent on the next setup. See the [Configuration](/configuration#core-daemon-settings) reference for details.
+</Tip>
 
 ## Dashboard views
 
@@ -91,7 +95,7 @@ meridian restart
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="http://localhost:3000 returns an error or doesn't load">
+  <Accordion title="http://localhost:3939 returns an error or doesn't load">
     Check that the UI service is running:
 
     ```bash
