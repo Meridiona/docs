@@ -8,11 +8,13 @@ Meridian includes a Next.js dashboard that gives you a live, browser-based view 
 
 ## Opening the dashboard
 
-The dashboard starts automatically when you run `meridian start` and listens on port 3000. To open it, navigate to:
+The dashboard starts automatically when you run `meridian start` and listens on port 3939. To open it, navigate to:
 
 ```
-http://localhost:3000
+http://localhost:3939
 ```
+
+Override the port by setting `MERIDIAN_UI_PORT` in `~/.meridian/app/.env`, then `meridian restart`.
 
 Any browser works. You can keep it open as a background tab while you work.
 
@@ -72,17 +74,13 @@ To tail the dashboard's log output:
 meridian logs ui
 ```
 
-If you've pulled an update to the repository and want to rebuild the dashboard with the latest changes:
+To pull a newer release of the dashboard along with the rest of Meridian:
 
 ```bash
-cd ui && npm run build
+meridian update
 ```
 
-Then restart Meridian to pick up the new build:
-
-```bash
-meridian restart
-```
+`meridian update` runs `npm install -g @meridiona/meridian@latest` under the hood and re-runs `meridian setup`. Source-built contributors rebuild manually with `cd ui && npm run build && meridian restart`.
 
 <Note>
   The dashboard reads directly from `~/.meridian/meridian.db`. It does not make any network requests and does not send your activity data anywhere. All rendering happens locally in your browser.
@@ -91,7 +89,7 @@ meridian restart
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="http://localhost:3000 returns an error or doesn't load">
+  <Accordion title="http://localhost:3939 returns an error or doesn't load">
     Check that the UI service is running:
 
     ```bash
@@ -113,12 +111,14 @@ meridian restart
   <Accordion title="The active session card shows stale data">
     The daemon writes new data every 60 seconds (configurable via `POLL_INTERVAL_SECS`). If the card hasn't updated in longer than a minute or two, check that the daemon is running with `meridian status` and review the daemon log with `meridian logs`.
   </Accordion>
-  <Accordion title="The dashboard was installed without the UI (--no-ui flag)">
-    If you ran `./install.sh --no-ui`, the dashboard was not built. Build and register it now:
+  <Accordion title="The dashboard was installed without the UI (source builds with --no-ui)">
+    If you built from source with `./install.sh --no-ui`, the dashboard was skipped. Build and register it now:
 
     ```bash
     cd ui && npm run build
     meridian restart
     ```
+
+    The npm distribution always includes a prebuilt dashboard, so this only applies to source-built contributors.
   </Accordion>
 </AccordionGroup>

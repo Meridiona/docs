@@ -8,15 +8,17 @@ Meridian ships a TypeScript MCP (Model Context Protocol) server that gives any c
 
 The MCP server opens `~/.meridian/meridian.db` in read-only mode on each tool call, so the AI always sees up-to-date session data without any manual syncing.
 
-## How the MCP server is built
+## Where the MCP server lives
 
-`./install.sh` builds the MCP server automatically into `packages/meridian-mcp/dist/index.js`. If you need to rebuild it manually — for example after updating the repository — run:
+The npm install (`npm install -g @meridiona/meridian` + `meridian setup`) places the prebuilt MCP server inside the app bundle at `~/.meridian/app/packages/meridian-mcp/dist/index.js` — point your MCP client at that path.
+
+Source-built contributors run `./install.sh`, which builds the MCP server into `packages/meridian-mcp/dist/index.js` in the checkout. To rebuild manually after editing the source:
 
 ```bash
 cd packages/meridian-mcp && npm run build
 ```
 
-The server uses [sql.js](https://github.com/sql-js/sql.js) (pure WebAssembly SQLite) so it works with any Node.js version without native module compilation.
+The server uses [sql.js](https://github.com/sql-js/sql.js) (pure WebAssembly SQLite) so it works with any modern Node.js version without native module compilation.
 
 ## Add Meridian to your AI tool
 
@@ -28,14 +30,14 @@ The server uses [sql.js](https://github.com/sql-js/sql.js) (pure WebAssembly SQL
     ~/Library/Application Support/Claude/claude_desktop_config.json
     ```
 
-    Add the `meridian` entry inside `mcpServers`. Replace `/path/to/meridian` with the absolute path to your cloned repository:
+    Add the `meridian` entry inside `mcpServers`. If you installed via npm, point at the bundle inside `~/.meridian/app`; if you built from source, use the path to your repo checkout instead.
 
     ```json
     {
       "mcpServers": {
         "meridian": {
           "command": "node",
-          "args": ["/path/to/meridian/packages/meridian-mcp/dist/index.js"]
+          "args": ["/Users/you/.meridian/app/packages/meridian-mcp/dist/index.js"]
         }
       }
     }
@@ -44,7 +46,7 @@ The server uses [sql.js](https://github.com/sql-js/sql.js) (pure WebAssembly SQL
     Save the file, then quit and relaunch Claude Desktop. The Meridian tools will appear automatically in the tool picker.
 
     <Tip>
-      You can find your repo path by running `pwd` inside the `meridian` directory.
+      Use an absolute path — `~` is not expanded by all MCP hosts. Replace `/Users/you` with your real home directory (`echo $HOME`).
     </Tip>
   </Tab>
 
@@ -60,7 +62,7 @@ The server uses [sql.js](https://github.com/sql-js/sql.js) (pure WebAssembly SQL
       "mcpServers": {
         "meridian": {
           "command": "node",
-          "args": ["/path/to/meridian/packages/meridian-mcp/dist/index.js"]
+          "args": ["/Users/you/.meridian/app/packages/meridian-mcp/dist/index.js"]
         }
       }
     }
@@ -69,10 +71,10 @@ The server uses [sql.js](https://github.com/sql-js/sql.js) (pure WebAssembly SQL
     **Option B — Claude Code CLI (global):**
 
     ```bash
-    claude mcp add meridian node /path/to/meridian/packages/meridian-mcp/dist/index.js
+    claude mcp add meridian node ~/.meridian/app/packages/meridian-mcp/dist/index.js
     ```
 
-    Replace `/path/to/meridian` with the absolute path to your cloned repository. Run `claude mcp list` to confirm Meridian appears in the registered servers.
+    Use an absolute path with your real home directory. Run `claude mcp list` to confirm Meridian appears in the registered servers.
   </Tab>
 
   <Tab title="Cursor">
@@ -80,7 +82,7 @@ The server uses [sql.js](https://github.com/sql-js/sql.js) (pure WebAssembly SQL
 
     - **Name:** `meridian`
     - **Command:** `node`
-    - **Args:** `/path/to/meridian/packages/meridian-mcp/dist/index.js`
+    - **Args:** `/Users/you/.meridian/app/packages/meridian-mcp/dist/index.js`
 
     Alternatively, edit your Cursor MCP config file directly (usually `~/.cursor/mcp.json`):
 
@@ -89,7 +91,7 @@ The server uses [sql.js](https://github.com/sql-js/sql.js) (pure WebAssembly SQL
       "mcpServers": {
         "meridian": {
           "command": "node",
-          "args": ["/path/to/meridian/packages/meridian-mcp/dist/index.js"]
+          "args": ["/Users/you/.meridian/app/packages/meridian-mcp/dist/index.js"]
         }
       }
     }
@@ -108,7 +110,7 @@ By default the MCP server reads `~/.meridian/meridian.db`. To point it at a diff
   "mcpServers": {
     "meridian": {
       "command": "node",
-      "args": ["/path/to/meridian/packages/meridian-mcp/dist/index.js"],
+      "args": ["/Users/you/.meridian/app/packages/meridian-mcp/dist/index.js"],
       "env": {
         "MERIDIAN_DB": "/custom/path/to/meridian.db"
       }
@@ -168,7 +170,7 @@ For the complete input schema and parameter reference for each tool, see [MCP To
   <Accordion title="The AI says it can't find Meridian or the database">
     Check two things:
 
-    1. **The daemon is running.** Run `meridian status` — all four services (screenpipe, daemon, jira-updater, ui) should show as running.
+    1. **The daemon is running.** Run `meridian status` — all four services (screenpipe, daemon, mlx-server, ui) should show as running.
     2. **The database exists.** Run `ls -lh ~/.meridian/meridian.db`. If the file is missing, the daemon hasn't written any sessions yet. Wait for the first 60-second poll cycle to complete.
 
     If the path is correct and the daemon is running, confirm the `args` path in your MCP config points to the actual `dist/index.js` file with no typos.
@@ -180,6 +182,6 @@ For the complete input schema and parameter reference for each tool, see [MCP To
     The MCP server uses sql.js (pure WebAssembly) instead of native SQLite bindings, so it is compatible with any modern Node.js version. If you see unexpected errors, rebuild the server with `cd packages/meridian-mcp && npm run build` and ensure you're on Node 18 or later.
   </Accordion>
   <Accordion title="Task-linked tools return no results">
-    Tools like `get-task-sessions`, `get-task-breakdown`, and `get-active-task` require the AI classifier to have linked sessions to tickets. Confirm that `CLASSIFICATION_ENABLED=true` in `~/.meridian/.env` and that at least one Jira, GitHub, or Linear integration is configured. Check `meridian doctor` for the classifier status.
+    Tools like `get-task-sessions`, `get-task-breakdown`, and `get-active-task` require the AI classifier to have linked sessions to tickets. Confirm that `CLASSIFICATION_ENABLED=true` in `~/.meridian/app/.env` and that at least one Jira, GitHub, or Linear integration is configured. Check `meridian doctor` for the classifier status.
   </Accordion>
 </AccordionGroup>

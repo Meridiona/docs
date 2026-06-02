@@ -1,10 +1,10 @@
 ---
 title: "Meridian Environment Variables and Configuration Reference"
 sidebarTitle: "Environment Variables"
-description: "All environment variables Meridian reads from ~/.meridian/.env — core daemon, classification, Jira, GitHub, Linear, and MCP server settings."
+description: "All environment variables Meridian reads from ~/.meridian/app/.env — core daemon, classification, Jira, GitHub, Linear, and MCP server settings."
 ---
 
-Meridian reads its configuration from `~/.meridian/.env`, which the installer creates and populates during `./install.sh`. You can edit it at any time with `meridian config edit`. Changes take effect after a `meridian restart`.
+Meridian reads its configuration from `~/.meridian/app/.env`, which `meridian setup` creates after `npm install -g @meridiona/meridian`. You can edit it at any time with `meridian config edit`. Changes take effect after a `meridian restart`. (Source-built contributors get the same variables in their repo-root `.env`.)
 
 Every variable has a safe default; you only need to set the ones relevant to your workflow. The sections below list every supported variable grouped by the part of Meridian that reads it.
 
@@ -79,10 +79,10 @@ The MCP server reads one variable at startup to locate the database.
 
 ## Minimal Example Configuration
 
-The block below shows the minimum set of variables needed to run the full Meridian stack with Jira classification enabled. Copy it to `~/.meridian/.env` and fill in your values, or use `meridian config edit` to open the file directly.
+The block below shows the minimum set of variables needed to run the full Meridian stack with Jira classification enabled. Copy it to `~/.meridian/app/.env` and fill in your values, or use `meridian config edit` to open the file directly.
 
 ```bash
-# ~/.meridian/.env
+# ~/.meridian/app/.env
 
 # ── Core ──────────────────────────────────────────────────────────────────────
 POLL_INTERVAL_SECS=60
@@ -105,5 +105,5 @@ LINEAR_API_KEY=lin_api_your_key_here
 ```
 
 <Tip>
-After editing `~/.meridian/.env`, run `meridian restart` to apply the new values. The daemon reads the file once at startup and does not hot-reload changes.
+After editing `~/.meridian/app/.env`, run `meridian restart` to apply the new values. The daemon reads the file once at startup and does not hot-reload changes.
 </Tip>
