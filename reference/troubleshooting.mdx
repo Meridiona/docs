@@ -277,7 +277,7 @@ Run the guided permissions walkthrough:
 meridian permissions
 ```
 
-The command opens the Screen Recording, Accessibility, and Microphone System Settings panes in sequence and waits for you to confirm each one. After granting access, restart the stack:
+The command opens the Screen Recording and Accessibility System Settings panes in sequence and waits for you to confirm each one. After granting access, restart the stack:
 
 ```bash
 meridian restart
@@ -291,16 +291,7 @@ You must restart screenpipe after granting Screen Recording permission. The perm
 
 <Accordion title="No audio transcription in sessions">
 
-Audio transcription requires the Microphone permission. screenpipe appears in the Microphone pane only after it has first tried to access the microphone — this happens automatically once Screen Recording is granted and screenpipe is running.
-
-If screenpipe is not listed in the Microphone pane yet:
-
-1. Ensure Screen Recording is already granted.
-2. Start screenpipe: `meridian start`.
-3. Wait a few seconds, then open System Settings → Privacy & Security → Microphone.
-4. Toggle screenpipe on.
-
-Alternatively, run `meridian permissions` to open all three panes in the correct order.
+Meridian ships with audio capture disabled — screenpipe is launched with `--disable-audio`, so no Microphone permission is requested and no audio is recorded or transcribed. Existing sessions will have an empty `audio_snippets` array, which is expected.
 
 </Accordion>
 
@@ -308,7 +299,7 @@ Alternatively, run `meridian permissions` to open all three panes in the correct
 
 ## Dashboard
 
-<Accordion title="http://localhost:3000 is not loading">
+<Accordion title="http://localhost:3939 is not loading">
 
 1. Check whether the UI service is running:
 

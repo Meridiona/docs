@@ -23,7 +23,7 @@ Enables and bootstraps every Meridian LaunchAgent, then prints a live status sum
 | `com.meridiona.screenpipe` | screenpipe ambient recorder |
 | `com.meridiona.daemon` | Meridian Rust ETL daemon |
 | `com.meridiona.jira-updater` | Jira / GitHub / Linear sync |
-| `com.meridiona.ui` | Next.js dashboard at http://localhost:3000 |
+| `com.meridiona.ui` | Next.js dashboard at http://localhost:3939 (override via `MERIDIAN_UI_PORT`) |
 | `com.meridiona.mlx-server` | MLX inference server |
 | `com.meridiona.coding-agent-indexer` | Coding-agent context indexer |
 
@@ -173,13 +173,16 @@ EDITOR=code meridian config edit
 meridian permissions
 ```
 
-Walks you interactively through the three macOS privacy panes that screenpipe requires:
+Walks you interactively through the two macOS privacy panes that screenpipe requires:
 
 1. **Screen Recording** — opens the System Settings pane; click `+`, navigate to the screenpipe binary, add it, and toggle it on.
 2. **Accessibility** — same steps.
-3. **Microphone** — screenpipe appears here only after it first requests mic access. Grant Screen Recording first if screenpipe is not listed yet.
 
 After each step the script waits for you to press Enter. Run `meridian restart` afterwards so screenpipe picks up the newly granted permissions.
+
+<Note>
+  Audio capture is disabled (screenpipe runs with `--disable-audio`), so no Microphone permission is required.
+</Note>
 
 <Warning>
 Without Screen Recording permission, screenpipe cannot capture frames and Meridian will have no data to process.
