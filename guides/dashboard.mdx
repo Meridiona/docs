@@ -47,6 +47,41 @@ Navigate to `/sessions` to see every completed session for the current day, orde
 
 Navigate to `/apps` to see all-time usage statistics aggregated by application: total time, session count, average session length, and the last time each app was seen. A focus donut chart at the top highlights your top apps by cumulative time.
 
+### Worklogs view
+
+Navigate to `/worklogs` to review the worklogs Meridian has drafted from your classified sessions and decide which ones to post to your issue tracker. **Nothing is sent to Jira, Linear, or GitHub until you approve it here — approval is the only gate, and there is no auto-post switch.**
+
+The pipeline that feeds this view is identical for every supported tracker:
+
+<Steps>
+  <Step title="Draft (every hour)">
+    The daemon walks the last hour of classified sessions, groups them by matched ticket, and asks the local MLX server to synthesise a short narrative for each task/hour bucket. Each row is written to `pm_worklogs` with `status='draft'` and a snapshot of which provider it should post to (Jira, Linear, or GitHub) — taken from the ticket's `pm_tasks.provider` at draft time.
+  </Step>
+  <Step title="Review and edit">
+    Open `/worklogs`. Every draft is shown with its ticket key, time window, rolled-up duration, the synthesised comment, and a provider badge so you can tell at a glance where it will land. Edit the comment text in-place if you want a different phrasing.
+  </Step>
+  <Step title="Approve">
+    Click **Approve**. The row transitions to `status='approved'`. You can still un-approve before the next post cycle if you change your mind.
+  </Step>
+  <Step title="Post (within ~60s)">
+    The daemon's post loop picks up `approved` rows and dispatches each one based on its provider snapshot:
+
+    - **Jira** — `POST /rest/api/3/issue/{key}/worklog` (native worklog, with **Time Spent** + comment).
+    - **Linear** — `commentCreate` GraphQL mutation (structured comment on the issue).
+    - **GitHub** — `POST /repos/{owner}/{repo}/issues/{number}/comments` (structured comment on the issue).
+
+    On success the row moves to `status='posted'` and the backend's worklog or comment id is stored so the entry can be linked back. Worklogs are idempotent on `(task_key, window_start, window_end)` — re-running the pipeline never produces duplicates.
+  </Step>
+</Steps>
+
+To see the day's drafts without opening the browser:
+
+```bash
+meridian worklog-status
+```
+
+For the tracker-specific setup that this view depends on, see [Jira](/guides/jira), [GitHub Issues, and Linear](/guides/github-linear).
+
 ## Activity categories
 
 Meridian classifies each session into one of ten fixed categories. Each category has a distinct color used consistently across the timeline, the category breakdown chart, and every session card:

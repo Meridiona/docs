@@ -6,6 +6,8 @@ description: "Link your Jira Cloud workspace to Meridian so sessions are classif
 
 Meridian fetches your open Jira tickets, stores them locally as `pm_tasks`, and uses them during session classification. Every time you close a coding or research session, Meridian's classifier checks which ticket that work most likely belongs to and writes a `ticket_links` row to its database — no timesheets, no manual updates required. All you need is a Jira API token and three environment variables.
 
+Once classification is wired up, Meridian also **drafts worklogs** against the matched ticket every hour. On Jira, a worklog is posted via Jira's native **worklog REST API** — the same primitive that powers Jira's built-in time tracking, so each posted entry shows up in the ticket's **Work Log** tab with the synthesised narrative as its comment and the rolled-up duration as **Time Spent**. Posting only happens after you approve the draft in the dashboard — see [Review and approve worklogs](/guides/dashboard#worklogs-view) for the shared draft → approve → post pipeline (it works the same way across Jira, Linear, and GitHub).
+
 ## Prerequisites
 
 - A Jira Cloud account (Jira Data Center is not supported)
@@ -51,8 +53,20 @@ JIRA_API_TOKEN=your-api-token-here
 ```
 
 <Note>
-  Meridian only reads your Jira tickets for classification. It never creates, modifies, closes, or deletes tickets on your behalf.
+  Meridian only reads your Jira tickets and writes **worklogs** (Jira's native time-tracking entries) against tickets you've matched. It never creates, modifies, closes, or deletes tickets themselves, and no worklog is posted until you approve it in the dashboard.
 </Note>
+
+## What "posting a worklog" means on Jira
+
+When you approve a draft, Meridian calls Jira's `POST /rest/api/3/issue/{key}/worklog` endpoint with:
+
+- **Time spent** — duration of the classified session window, rounded to the nearest minute.
+- **Started** — the session start in your local timezone.
+- **Comment** — the synthesised narrative of what you actually did during that window (built from screenpipe activity + matched code/commit context).
+
+In Jira you'll see a new entry under the ticket's **Work Log** tab attributed to you, and the ticket's **Time Spent** total will roll up by the worklog's duration. Worklogs are idempotent on `(task_key, window_start, window_end)` — re-running the pipeline never double-posts.
+
+To enable posting at all, the same `JIRA_EMAIL` + `JIRA_API_TOKEN` you set above must be able to **add worklogs** on the relevant projects (the standard "Work on issues" permission in Jira). No extra scopes are needed beyond the API token already configured.
 
 Alternatively, re-run the installer's credential walkthrough to be prompted interactively:
 

@@ -4,7 +4,9 @@ sidebarTitle: "GitHub & Linear"
 description: "Pull open GitHub or Linear issues into Meridian so coding sessions are automatically classified against the right tickets, with no manual tracking needed."
 ---
 
-Meridian supports two additional issue trackers alongside Jira: GitHub Issues and Linear. Both work the same way under the hood — Meridian fetches your open issues into the local `pm_tasks` table and uses them as classification targets when it processes each app session. You can enable one, the other, or both at the same time.
+Meridian supports two additional issue trackers alongside Jira: GitHub Issues and Linear. Both work the same way under the hood — Meridian fetches your open issues into the local `pm_tasks` table, uses them as classification targets when it processes each app session, and once classification matches a session to an issue it can also **draft a worklog** against that issue. You can enable one, the other, or both at the same time.
+
+Neither GitHub nor Linear exposes a native time-tracking / worklog API, so on these trackers Meridian records a worklog as a **structured comment** on the matched issue: a single Markdown line of the form `**⏱ Worklog — 1h 30m** · 2026-06-02 09:00`, followed by the synthesised narrative of what you did, followed by an HTML-comment machine marker (`meridian-worklog v1 …`) carrying the exact UTC window and seconds so the entry can be parsed back out later. Worklogs are still gated by approval in the dashboard's **Worklogs** view — the same draft → approve → post pipeline as Jira, just with a different final hop. See [Review and approve worklogs](/guides/dashboard#worklogs-view).
 
 <Tabs>
   <Tab title="GitHub Issues">
@@ -14,8 +16,8 @@ Meridian supports two additional issue trackers alongside Jira: GitHub Issues an
 
     ## Prerequisites
 
-    - A GitHub account with access to your organisation's repositories
-    - A personal access token (PAT) with at least the `repo` scope
+    - A GitHub account with access to the organisation (or personal) issues you want to track
+    - A personal access token (PAT) with **write** access to issue comments — Meridian needs this to post worklog comments after you approve them
 
     ## Create a GitHub personal access token
 
@@ -27,9 +29,10 @@ Meridian supports two additional issue trackers alongside Jira: GitHub Issues an
         Scroll to the bottom of the left sidebar and click **Developer settings**.
       </Step>
       <Step title="Generate a new token">
-        Select **Personal access tokens → Fine-grained tokens** (recommended) or **Tokens (classic)**. Click **Generate new token**.
+        Select **Personal access tokens → Tokens (classic)** or **Fine-grained tokens**. Click **Generate new token**.
 
-        For a classic token, enable the **repo** scope. For a fine-grained token, grant **Read-only** access to **Issues** and **Repository metadata** for the repositories Meridian should monitor.
+        - **Classic token (simplest)** — enable the **`repo`** scope. This single scope covers both reading issues and posting worklog comments, on personal and org-owned repos.
+        - **Fine-grained token** — grant **Issues: Read and write** on every repository Meridian should monitor (read-only is not enough; Meridian needs write access to add the worklog comment when you approve a draft).
       </Step>
       <Step title="Copy the token">
         Copy the token value before navigating away — GitHub only shows it once.
@@ -50,13 +53,13 @@ Meridian supports two additional issue trackers alongside Jira: GitHub Issues an
     # ~/.meridian/.env
 
     GITHUB_TOKEN=ghp_your_personal_access_token
-    GITHUB_ORG=your-org-name
+    GITHUB_ORG=your-org-name   # org slug OR your own username
 
     # Optional: limit to specific repos (comma-separated owner/repo pairs)
     # GITHUB_REPOS=your-org/api,your-org/web
     ```
 
-    If `GITHUB_REPOS` is omitted, Meridian fetches open issues from all repositories in the organisation that your token can access.
+    `GITHUB_ORG` is the **issue owner** Meridian should sync — an organisation slug or your own GitHub username (for personal repos). Meridian fetches **open issues assigned to you** under that owner. If `GITHUB_REPOS` is omitted, every repository under the owner that your token can read is included.
 
     ## Apply and verify
 
@@ -90,11 +93,31 @@ Meridian supports two additional issue trackers alongside Jira: GitHub Issues an
 
     Only open issues from those repositories will be pulled into `pm_tasks`. This is useful when your organisation has many repositories but you only actively work in a subset.
 
+    ## What "posting a worklog" means on GitHub
+
+    GitHub has no native time-tracking API, so when you approve a worklog draft Meridian posts it as a comment on the matched issue via `POST /repos/{owner}/{repo}/issues/{number}/comments`. The comment looks like:
+
+    ```markdown
+    **⏱ Worklog — 1h 30m** · 2026-06-02 09:00
+
+    Wired the new worklog provider router and migrated existing rows to default to `jira`. Wrote the comment formatter and idempotency check.
+
+    <!-- meridian-worklog v1 window=2026-06-02T09:00:00Z/2026-06-02T10:00:00Z seconds=5400 -->
+    ```
+
+    In your tracker you will see:
+
+    - A new comment on the issue authored by the token's user, with the time-spent line and the synthesised narrative.
+    - The same comment surfaced on any **Project (v2)** board the issue belongs to — Project cards already show issue comments, so no extra setup is needed.
+    - A hidden machine marker on the last line that Meridian (and any other tool) can grep for to reconstruct the exact window and seconds later. Worklogs are idempotent on `(task_key, window_start, window_end)` — re-running the pipeline never double-posts.
+
+    The same `repo` (classic) or `Issues: Read and write` (fine-grained) scope you configured above is all that's needed — no separate Projects scope is required.
+
     ## Troubleshooting
 
     <AccordionGroup>
-      <Accordion title="401 or 403 errors on startup">
-        Check that your token has not expired and has the correct scopes. Classic tokens need the `repo` scope; fine-grained tokens need read access to Issues. Regenerate the token in GitHub Settings if needed.
+      <Accordion title="401 or 403 errors on startup, or when a worklog tries to post">
+        Check that your token has not expired and has the correct scopes. Classic tokens need the `repo` scope; fine-grained tokens need **Issues: Read and write** (read-only will let issues sync but worklog comments will fail with 403). Regenerate the token in GitHub Settings if needed.
       </Accordion>
       <Accordion title="pm_tasks is empty for GitHub">
         Confirm that `GITHUB_ORG` matches your organisation's login name exactly (case-sensitive). If `GITHUB_REPOS` is set, verify each entry uses the full `owner/repo` format. Your token must have access to at least one repository in the org.
@@ -147,11 +170,11 @@ Meridian supports two additional issue trackers alongside Jira: GitHub Issues an
 
     LINEAR_API_KEY=lin_api_your_key_here
 
-    # Optional: restrict to specific team IDs (comma-separated)
-    # LINEAR_TEAM_IDS=TEAM1,TEAM2
+    # Optional: restrict to specific teams (comma-separated team keys or ids)
+    # LINEAR_TEAM_IDS=ENG,DESIGN
     ```
 
-    If `LINEAR_TEAM_IDS` is omitted, Meridian fetches open issues from all teams your account belongs to.
+    Meridian sends the key **raw** in Linear's `Authorization` header — there is no `Bearer` prefix (that prefix is for OAuth tokens; personal API keys go in as-is). If `LINEAR_TEAM_IDS` is omitted, Meridian fetches the issues assigned to you across every team your account belongs to.
 
     ## Apply and verify
 
@@ -183,7 +206,28 @@ Meridian supports two additional issue trackers alongside Jira: GitHub Issues an
     LINEAR_TEAM_IDS=ENG,DESIGN
     ```
 
-    Only issues belonging to those teams will be pulled into `pm_tasks`. Find your team IDs in Linear under **Settings → Teams** — each team has an identifier shown in its URL and settings page.
+    Only issues belonging to those teams will be pulled into `pm_tasks`. Find your team identifiers in Linear under **Settings → Teams** — each team has a short key (e.g. `ENG`) and an internal id; either works.
+
+    ## What "posting a worklog" means on Linear
+
+    Linear has no worklog, time-entry, or "time spent" field in its GraphQL schema. So when you approve a worklog draft, Meridian creates a structured comment on the matched issue via the `commentCreate` mutation:
+
+    ```graphql
+    mutation {
+      commentCreate(input: { issueId: "<issue-uuid>", body: "**⏱ Worklog — 1h 30m** · …" }) {
+        success
+        comment { id url }
+      }
+    }
+    ```
+
+    Meridian first resolves the issue UUID from its human identifier (e.g. `ENG-123`) and then posts the comment. In Linear you will see:
+
+    - A new comment on the issue authored by the API key's user, with the **⏱ Worklog — 1h 30m** time-spent line followed by the synthesised narrative.
+    - The comment counts toward Linear's issue activity feed and is visible in every view that surfaces comments (issue detail, Inbox, Slack mirror if you have it enabled).
+    - A hidden machine marker on the last line carrying the exact UTC window and seconds, so the entry can be parsed back out programmatically. Worklogs are idempotent on `(task_key, window_start, window_end)` — re-running the pipeline never double-posts.
+
+    The personal API key you configured above is the only credential required. Meridian uses the key's `viewer` (the user who created it) as the comment author, so worklog comments are attributed to you.
 
     ## Troubleshooting
 
