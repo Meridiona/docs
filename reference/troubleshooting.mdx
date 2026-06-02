@@ -98,7 +98,7 @@ meridian logs mlx-server -f
 
 Wait until you see `server: MLX model ready` (this can take up to 30 seconds on first run while the model downloads).
 
-Alternatively, if you do not need session classification, set `CLASSIFICATION_ENABLED=false` in `~/.meridian/.env` and restart:
+Alternatively, if you do not need session classification, set `CLASSIFICATION_ENABLED=false` in the repo-root `.env` and restart:
 
 ```bash
 meridian config edit   # set CLASSIFICATION_ENABLED=false
@@ -161,7 +161,7 @@ meridian config edit    # verify SCREENPIPE_DB if you customised it
 
 A 401 from the Jira API means either `JIRA_EMAIL` or `JIRA_API_TOKEN` is wrong, or the token has been revoked.
 
-1. Open `~/.meridian/.env` with `meridian config edit`.
+1. Open the repo-root `.env` with `meridian config edit`.
 2. Verify that `JIRA_EMAIL` matches the email address of the Atlassian account that owns the token.
 3. Regenerate the token at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens) and paste the new value into `JIRA_API_TOKEN`.
 4. Restart: `meridian restart`.
@@ -193,14 +193,14 @@ python3 scripts/refresh_pm_tasks.py --jql "project=KAN ORDER BY updated DESC"
 A GitHub 401 means the personal access token is expired, revoked, or was created without the `repo` scope.
 
 1. Go to [github.com/settings/tokens](https://github.com/settings/tokens) and create a new classic PAT with at minimum the `repo` scope.
-2. Update `GITHUB_TOKEN` in `~/.meridian/.env` via `meridian config edit`.
+2. Update `GITHUB_TOKEN` in the repo-root `.env` via `meridian config edit`.
 3. Restart: `meridian restart`.
 
 </Accordion>
 
 <Accordion title="Linear: no tasks are loading">
 
-1. Verify `LINEAR_API_KEY` is set correctly in `~/.meridian/.env`.
+1. Verify `LINEAR_API_KEY` is set correctly in the repo-root `.env`.
 2. Check `LINEAR_TEAM_IDS` — if set, confirm the team IDs are correct (visible in Linear's workspace settings URL).
 3. Ensure the teams have open issues in a status that the connector picks up.
 4. Check the jira-updater log (which also handles Linear sync) for error messages:

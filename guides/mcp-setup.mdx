@@ -180,6 +180,6 @@ For the complete input schema and parameter reference for each tool, see [MCP To
     The MCP server uses sql.js (pure WebAssembly) instead of native SQLite bindings, so it is compatible with any modern Node.js version. If you see unexpected errors, rebuild the server with `cd packages/meridian-mcp && npm run build` and ensure you're on Node 18 or later.
   </Accordion>
   <Accordion title="Task-linked tools return no results">
-    Tools like `get-task-sessions`, `get-task-breakdown`, and `get-active-task` require the AI classifier to have linked sessions to tickets. Confirm that `CLASSIFICATION_ENABLED=true` in `~/.meridian/.env` and that at least one Jira, GitHub, or Linear integration is configured. Check `meridian doctor` for the classifier status.
+    Tools like `get-task-sessions`, `get-task-breakdown`, and `get-active-task` require the AI classifier to have linked sessions to tickets. Confirm that `CLASSIFICATION_ENABLED=true` in the repo-root `.env` and that at least one Jira, GitHub, or Linear integration is configured. Check `meridian doctor` for the classifier status.
   </Accordion>
 </AccordionGroup>
