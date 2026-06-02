@@ -21,13 +21,15 @@ Enables and bootstraps every Meridian LaunchAgent, then prints a live status sum
 | Label | Service |
 |---|---|
 | `com.meridiona.screenpipe` | screenpipe ambient recorder |
-| `com.meridiona.daemon` | Meridian Rust ETL daemon |
-| `com.meridiona.jira-updater` | Jira / GitHub / Linear sync |
+| `com.meridiona.daemon` | Meridian Rust ETL daemon (also runs the in-process PM worklog pipeline and the coding-agent indexer) |
 | `com.meridiona.ui` | Next.js dashboard at http://localhost:3000 |
 | `com.meridiona.mlx-server` | MLX inference server |
-| `com.meridiona.coding-agent-indexer` | Coding-agent context indexer |
 
 If any `.plist` file is missing, `meridian start` prints an error for that service and exits with a non-zero code. Run `./install.sh` to reinstall missing plists.
+
+<Note>
+The PM worklog (Jira / GitHub / Linear) pipeline and the coding-agent indexer used to ship as their own LaunchAgents (`com.meridiona.jira-updater`, `com.meridiona.coding-agent-indexer`). They now run inside `com.meridiona.daemon`, so `meridian status` only reports the four labels above.
+</Note>
 
 <Note>
 The Rust daemon TCP-connects to the MLX server at startup to verify it is reachable. If the MLX server is not running, the daemon exits immediately. Start all services together with `meridian start` rather than launching them individually.
@@ -66,7 +68,7 @@ meridian status
 Queries launchd for the running state of every registered service and prints a colour-coded summary:
 
 - **✓ running (pid N)** — service is up and has a PID
-- **⊘ loaded but not running** — launchd has the plist but the process is not active (e.g. the jira-updater between scheduled slots)
+- **⊘ loaded but not running** — launchd has the plist but the process is not active
 - **✗ not installed** — plist is missing; run `./install.sh`
 
 Run `meridian status` any time you are unsure whether the stack is up.
@@ -83,17 +85,18 @@ Tails a log file from `~/.meridian/logs/`. All arguments are optional.
 
 **Valid targets**
 
+Each component has a normal log (everything) and a paired `-error` log (WARN/ERROR only) so you can grep for problems without scrolling past routine output.
+
 | Target | File |
 |---|---|
 | `daemon` *(default)* | `~/.meridian/logs/daemon.log` |
 | `daemon-error` | `~/.meridian/logs/daemon-error.log` |
-| `jira-updater` | `~/.meridian/logs/jira-updater.log` |
 | `screenpipe` | `~/.meridian/logs/screenpipe.log` |
 | `screenpipe-error` | `~/.meridian/logs/screenpipe-error.log` |
 | `ui` | `~/.meridian/logs/ui.log` |
 | `ui-error` | `~/.meridian/logs/ui-error.log` |
 | `mlx-server` | `~/.meridian/logs/mlx-server.log` |
-| `coding-agent-indexer` | `~/.meridian/logs/coding-agent-indexer.log` |
+| `mlx-server-error` | `~/.meridian/logs/mlx-server-error.log` |
 
 **Flags**
 
@@ -111,9 +114,19 @@ meridian logs daemon -f
 # Last 50 lines of the MLX server log
 meridian logs mlx-server -n 50
 
+# Stream daemon errors only (skip routine INFO output)
+meridian logs daemon-error -f
+
+# Stream MLX server errors only
+meridian logs mlx-server-error -f
+
 # Tail errors from screenpipe
 meridian logs screenpipe-error
 ```
+
+<Tip>
+The Rust daemon also writes structured JSON logs to `~/.meridian/logs/meridian-rust.jsonl.<date>` for `jq`-friendly grepping outside the CLI.
+</Tip>
 
 </Accordion>
 
@@ -127,7 +140,7 @@ Runs a full suite of environment health checks and prints a pass/fail result for
 
 - macOS detected
 - `meridian-daemon` binary exists and is executable
-- Service `.plist` files are installed and pass `plutil -lint` (daemon, jira-updater, screenpipe, UI)
+- Service `.plist` files are installed and pass `plutil -lint` (daemon, screenpipe, UI)
 - Daemon process is running
 - `~/.meridian/.env` configuration file exists
 - screenpipe binary is in `$PATH`
@@ -144,6 +157,85 @@ At the end, `doctor` prints a count of failed checks. A clean run looks like:
 ```
 
 Run `meridian doctor` as the first diagnostic step whenever something seems wrong.
+
+</Accordion>
+
+<Accordion title="meridian worklog-status [--day YYYY-MM-DD]">
+
+```bash
+meridian worklog-status [--day YYYY-MM-DD]
+```
+
+Prints a read-only, human-readable report of the day's PM worklogs: the hour ledger (done / pending / stuck), worklogs grouped by state (`drafted`, `approved`, `posted`, `rejected`, `failed`), and a per-ticket table with the synthesised Jira comment for each row. Useful for a quick "what is the daemon about to post?" check before approving worklogs in the dashboard.
+
+This command is read-only — it never writes to the DB and never calls Jira / GitHub / Linear. It also skips daemon initialisation, so it's safe to run while the daemon is up.
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--day YYYY-MM-DD` | Report for the given day (default: today, in the daemon's local timezone) |
+
+**Examples**
+
+```bash
+# Today's worklogs
+meridian worklog-status
+
+# Backfill check for a specific day
+meridian worklog-status --day 2026-05-30
+```
+
+</Accordion>
+
+<Accordion title="meridian pm-worklog [--day YYYY-MM-DD]">
+
+```bash
+meridian pm-worklog [--day YYYY-MM-DD]
+```
+
+One-shot run of the Stage 4 PM worklog pipeline: walks the day's hour ledger and **drafts** one worklog per task per ready hour. Worklogs land in the `drafted` state — they are never auto-posted. Approve them in the dashboard (or run `meridian worklog-post-approved`) to send them to Jira / GitHub / Linear.
+
+Use this when you want to regenerate drafts for a past day, recover from a failed run, or kick the pipeline manually without waiting for the next daemon cycle. The daemon runs the same pipeline on a schedule, so under normal operation you do not need to call this command.
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--day YYYY-MM-DD` | Day to process (default: today) |
+
+**Examples**
+
+```bash
+# Re-draft worklogs for yesterday
+meridian pm-worklog --day 2026-06-01
+
+# Draft today's worklogs now (skip waiting for the next daemon cycle)
+meridian pm-worklog
+```
+
+<Warning>
+Running `meridian pm-worklog` while the in-daemon worklog pipeline is also active can have both processes hit the LLM at the same time. The global LLM gate prevents corruption, but for predictable behaviour run this against a stopped daemon (`meridian stop`) when backfilling.
+</Warning>
+
+</Accordion>
+
+<Accordion title="meridian worklog-post-approved">
+
+```bash
+meridian worklog-post-approved
+```
+
+Posts every worklog you have approved in the dashboard to its provider (Jira / GitHub / Linear) immediately. This is a one-shot run of the same approved-poster sweep the daemon performs every ~60 seconds, so use it when you want a result *now* — for example, right after approving a batch of worklogs in the dashboard and not wanting to wait for the next cycle.
+
+This is the only CLI command that writes to a real ticketing system. Worklogs in any state other than `approved` are skipped.
+
+**Example**
+
+```bash
+# Approve worklogs in the dashboard, then flush them to Jira now
+meridian worklog-post-approved
+```
 
 </Accordion>
 
