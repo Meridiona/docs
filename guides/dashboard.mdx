@@ -22,22 +22,61 @@ The dashboard has three main views accessible from the navigation bar.
 
 ### Home
 
-The home page (`/`) is your at-a-glance summary of the current workday. It contains four sections:
+The home page (`/`) is your at-a-glance summary of the current workday. It's organised as three layers of detail — overview, zoom, then details-on-demand — so the default view stays calm and you pull in more depth only when you want it.
+
+#### Layer 1 — Today at a glance
+
+The top of the page leads with a single sentence summarising the day so far — for example, *"3h 12m focused, 28% of it alongside Claude — plus 24m of autonomous agent work while you were away."* Autonomous work and fragmented days are only mentioned when they're notable, so the headline stays meaningful.
+
+Directly beneath, the **DayTimeline** shows the entire day as two aligned tracks:
+
+- **Presence track** — solid where you were active at the keyboard, faint where you were idle or away.
+- **Agent band** — a strip beneath the presence track, solid where a coding agent (Claude Code, Codex) was engaged.
+
+Overlap is shown rather than summed. Wherever the agent band sits **under an active stretch**, that time was **supervised** (the agent ran while you were working). Wherever it sits **under an idle stretch**, that time was **autonomous** (the agent ran while you were away). Hover any block to see its exact start time, end time, and duration.
+
+#### Layer 2 — TodayMetrics
+
+Below the timeline, a row of three headline numbers gives you the day in one glance:
+
+| Metric | Meaning |
+|---|---|
+| **Focus** | Total time you were active at the keyboard today. |
+| **AI-assisted** | The share of your focus time that overlapped with an engaged coding agent — i.e. supervised agent time as a percentage of focus. |
+| **Switches** | Count of foreground app changes today. Brief sub-15-second window flicker is filtered out, so this reflects real context shifts rather than capture noise. Lower numbers indicate deeper focus. |
+
+#### Layer 3 — Details on demand
+
+Each metric tile is a button. Click one to expand a panel underneath with the full breakdown:
+
+- **Focus** expands into Active, Idle / away, and AI-assisted time.
+- **AI-assisted** expands into Supervised (agent ran while you were active), Autonomous (agent ran while you were away), and Agent total.
+- **Switches** expands into the raw context-switch count and an explanation of the 15-second flicker filter.
+
+Click the same tile again to collapse the panel. Only one panel is open at a time, so the page never clogs.
+
+#### Active session, totals strip, and tasks
+
+The rest of the page contains:
 
 <CardGroup cols={2}>
   <Card title="Active Session Card" icon="circle-dot">
     Shows the app currently in focus, how long it has been active, and the top window titles seen in this session. Updates on each daemon poll cycle (every 60 seconds).
   </Card>
-  <Card title="Daily Stats" icon="chart-bar">
-    Summarises today's total focus time, idle time, and away (sleep) time alongside the total session count. Useful for a quick productivity pulse check.
+  <Card title="Totals strip" icon="chart-bar">
+    A four-tile summary below TodayMetrics: Focus, Idle, **Coding agent** (Claude Code / Codex time, shown as a share of focus), and Switches.
   </Card>
-  <Card title="Category Breakdown" icon="chart-bar">
-    A horizontal bar chart showing how your focus time is distributed across activity categories. Each bar is color-coded to match the timeline below.
+  <Card title="Task buckets" icon="layer-group">
+    Today's sessions grouped by the task key Meridian classified them under, so you can see how time split across tickets and projects.
   </Card>
-  <Card title="Day Timeline" icon="clock">
-    A scrollable, chronological view of every session today, rendered as color-coded segments. Idle gaps and system sleep periods appear as distinct visual breaks.
+  <Card title="Category Breakdown" icon="chart-pie">
+    A horizontal bar chart showing how your focus time is distributed across activity categories. Each bar is color-coded to match the timeline above.
   </Card>
 </CardGroup>
+
+<Note>
+  **Coding-agent time is never summed into Focus.** Supervised agent time is a *subset* of focus — the AI-assisted slice — and autonomous agent time sits entirely outside focus (because you were idle). The TodayMetrics row and the totals strip both surface coding-agent time as a share of focus rather than an additive total, so the numbers never read as more wall-clock than actually elapsed.
+</Note>
 
 ### Sessions list
 
