@@ -8,30 +8,23 @@ Meridian is configured entirely through environment variables. There are no conf
 
 ## Where configuration lives
 
-Meridian uses two env files, one per process boundary:
+Meridian uses a single env file at the repository root, shared by the Rust daemon and the Python agents:
 
 | File | Used by |
 |---|---|
-| `~/.meridian/.env` | The Rust daemon — core settings and PM credentials |
-| `services/.env` | The Python agents — LLM endpoint and Jira credentials |
+| `<repo>/.env` | The Rust daemon **and** the Python agents — every variable below |
 
-A third internal env file is managed automatically by the installer and holds the `OPENROUTER_API_KEY` for cloud LLM fallback. In practice you never need to touch it directly — the installer keeps it in sync with the values you provide during setup.
+`install.sh` creates this file from `.env.example` on first run and writes any values you supply during the credential walkthrough back to the same file. Nothing is read from outside the repository.
 
 ## Editing configuration
 
-To open the daemon config in your `$EDITOR`, run:
+To open the config in your `$EDITOR`, run:
 
 ```bash
 meridian config edit
 ```
 
-This opens `~/.meridian/.env`. To edit the Python agents config, open `services/.env` directly:
-
-```bash
-$EDITOR services/.env
-```
-
-After saving, restart the relevant daemon for the change to take effect:
+This opens the repo-root `.env`. After saving, restart Meridian for the change to take effect:
 
 ```bash
 meridian restart
@@ -91,7 +84,7 @@ The API key is required to enable the Linear connector. `LINEAR_TEAM_IDS` is opt
 
 The smallest configuration that enables activity tracking, session categorisation, and Jira ticket sync is:
 
-```bash title="~/.meridian/.env"
+```bash title="<repo>/.env"
 # Required for task classification and Jira sync
 JIRA_BASE_URL=https://your-org.atlassian.net
 JIRA_EMAIL=you@your-org.com
@@ -105,7 +98,7 @@ Everything else defaults to safe values and can be added incrementally.
 
 ## Re-running credential prompts
 
-The installer skips any variable that already has a value in the relevant `.env` file. To re-prompt for a specific credential, delete that line from the file and re-run the installer:
+The installer skips any variable that already has a value in the repo-root `.env`. To re-prompt for a specific credential, delete that line from the file and re-run the installer:
 
 ```bash
 # 1. Remove the line you want to re-set (e.g. JIRA_API_TOKEN)
@@ -122,5 +115,5 @@ If you want to bypass the credential prompts entirely and manage the files yours
 ```
 
 <Tip>
-  You can also edit `~/.meridian/.env` directly with any text editor and then run `meridian restart`. The installer's prompt flow is a convenience, not a requirement.
+  You can also edit the repo-root `.env` directly with any text editor and then run `meridian restart`. The installer's prompt flow is a convenience, not a requirement.
 </Tip>

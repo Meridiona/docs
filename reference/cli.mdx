@@ -43,7 +43,7 @@ meridian stop
 
 Disables and boots out every LaunchAgent, then kills any orphaned `mlx_lm.server` processes that launchd does not track. The `.plist` files in `~/Library/LaunchAgents/` are left in place so `meridian start` can bring everything back up.
 
-Use this command before editing `~/.meridian/.env` so the daemon picks up the new values on the next `meridian start`.
+Use this command before editing the repo-root `.env` so the daemon picks up the new values on the next `meridian start`.
 
 </Accordion>
 
@@ -129,7 +129,7 @@ Runs a full suite of environment health checks and prints a pass/fail result for
 - `meridian-daemon` binary exists and is executable
 - Service `.plist` files are installed and pass `plutil -lint` (daemon, jira-updater, screenpipe, UI)
 - Daemon process is running
-- `~/.meridian/.env` configuration file exists
+- Repo-root `.env` configuration file exists
 - screenpipe binary is in `$PATH`
 - screenpipe database exists at `~/.screenpipe/db.sqlite`
 - screenpipe process is running
@@ -153,7 +153,7 @@ Run `meridian doctor` as the first diagnostic step whenever something seems wron
 meridian config edit
 ```
 
-Opens `~/.meridian/.env` in your `$EDITOR` (falls back to `nano` if `$EDITOR` is not set). This is the canonical way to update API keys, change the poll interval, or toggle classification without hunting for the file path.
+Opens the repo-root `.env` in your `$EDITOR` (falls back to `nano` if `$EDITOR` is not set). This is the canonical way to update API keys, change the poll interval, or toggle classification without hunting for the file path.
 
 After saving, run `meridian restart` so the daemon picks up the new values.
 

@@ -65,7 +65,7 @@ This guide walks you through getting Meridian running on your machine for the fi
     meridian config edit
     ```
 
-    This opens `~/.meridian/.env` in your `$EDITOR`. See the [Configuration](/configuration) page for the full variable reference.
+    This opens the repo-root `.env` in your `$EDITOR`. See the [Configuration](/configuration) page for the full variable reference.
   </Step>
   <Step title="Start Meridian">
     Bring all daemons up with a single command:
@@ -83,7 +83,7 @@ This guide walks you through getting Meridian running on your machine for the fi
     You should see all services — `com.meridiona.screenpipe`, `com.meridiona.daemon`, `com.meridiona.jira-updater`, `com.meridiona.ui`, `com.meridiona.mlx-server`, and `com.meridiona.coding-agent-indexer` — reported as running with their process IDs.
 
     <Note>
-      **MLX inference server for task classification.** If you installed with `--mlx`, Meridian uses a persistent MLX inference server (Qwen3.5-9B, running on-device via Metal) for session-to-ticket classification. On first start, the model downloads to your local cache (~6.6 GB) — this can take a few minutes depending on your connection speed. Subsequent starts load from cache in around 5 seconds. Watch the server come up with `meridian logs mlx-server`. If you haven't set up the MLX server, set `CLASSIFICATION_ENABLED=false` in `~/.meridian/.env` to run in activity-tracking mode without ticket classification.
+      **MLX inference server for task classification.** If you installed with `--mlx`, Meridian uses a persistent MLX inference server (Qwen3.5-9B, running on-device via Metal) for session-to-ticket classification. On first start, the model downloads to your local cache (~6.6 GB) — this can take a few minutes depending on your connection speed. Subsequent starts load from cache in around 5 seconds. Watch the server come up with `meridian logs mlx-server`. If you haven't set up the MLX server, set `CLASSIFICATION_ENABLED=false` in the repo-root `.env` to run in activity-tracking mode without ticket classification.
     </Note>
   </Step>
   <Step title="Open the dashboard">
@@ -133,7 +133,7 @@ meridian restart
 ## Troubleshooting
 
 <Accordion title="meridian status shows a daemon as 'not running'">
-  Run `meridian doctor` to identify the specific failure. Common causes are a missing `~/.meridian/.env` file (run `./install.sh` to create it), or a missing screenpipe database (start screenpipe first, then run `meridian start`).
+  Run `meridian doctor` to identify the specific failure. Common causes are a missing repo-root `.env` file (run `./install.sh` to create it from `.env.example`), or a missing screenpipe database (start screenpipe first, then run `meridian start`).
 </Accordion>
 
 <Accordion title="The dashboard at localhost:3000 isn't loading">
