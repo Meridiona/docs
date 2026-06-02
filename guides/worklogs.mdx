@@ -1,0 +1,141 @@
+---
+title: "Review and Approve Worklogs Before They Post to Jira"
+sidebarTitle: "Worklogs"
+description: "Use the Worklogs view in the Meridian dashboard to review, edit, and approve drafted worklogs — the only path that posts time to your tracker."
+---
+
+Meridian's PM-worklog stage synthesises one worklog per ticket per hour from your classified sessions. **Nothing reaches Jira automatically.** The daemon only ever *drafts* worklogs; you review, edit, and approve each one in the dashboard's **Worklogs** view, and a separate post sweep writes the approved entries to Jira within about a minute.
+
+Use this guide when you want to keep an automated record of your time without giving up the final say over what lands on a ticket.
+
+## When to use this
+
+Turn to the Worklogs view if you want to:
+
+- Capture per-ticket time logs from your real activity without writing them by hand.
+- Keep a human in the loop — every comment posted to Jira is something you explicitly approved.
+- Edit auto-generated comments before they go out, or dismiss drafts that don't represent useful work.
+
+The flow assumes Jira is already connected. See [Connect Meridian to Jira Cloud](/guides/jira) if you haven't set up the connector yet.
+
+## The drafted → approved → posted state machine
+
+Every worklog moves through a small set of states:
+
+```
+drafted ──(UI edit)──▶ drafted ──(UI approve)──▶ approved ──(post sweep)──▶ posted
+                                                    │
+                          terminal (empty / < 60s)  └──▶ failed
+```
+
+| State | What it means |
+|---|---|
+| `drafted` | The hourly driver synthesised a worklog from your sessions. It is **not** in Jira. Edit it, approve it, or dismiss it. |
+| `approved` | You approved the draft in the Worklogs view. It is queued for the next post sweep but has **not** been posted yet. You can still un-approve it to hold it back. |
+| `posted` | The post sweep wrote the comment to Jira. The state is terminal; Meridian records the Jira worklog ID alongside the row. |
+| `skipped` | You dismissed the draft. It will not be posted and the hour is considered handled. |
+| `failed` | The post sweep tried to write to Jira and got an error (auth, network, validation). The error is shown on the card; fix the cause and re-approve to retry. |
+
+Approval is the **only** way a worklog reaches your tracker. A driver re-run can never clobber an `approved` or `posted` row, so a human decision is never silently overwritten.
+
+<Note>
+  `time_spent` always comes from your actual idle-discounted activity for the hour (capped at one hour). The language model writes the comment, not the duration.
+</Note>
+
+## The Worklogs view
+
+Open the dashboard at [http://localhost:3000](http://localhost:3000) and select **Worklogs** in the sidebar (keyboard shortcut `4`).
+
+The header shows the day you're reviewing and a running count of drafts, approved, and posted worklogs. Use the `←` / `→` arrows to step through previous days; you can't step past today.
+
+Each worklog is rendered as a card containing:
+
+- The ticket key, the hour the worklog covers, and the time spent in that hour.
+- A confidence ring and any risk flags raised during synthesis (e.g. `low_confidence`, `thin_evidence`).
+- The editable comment that will be posted to Jira.
+- Optional supporting detail — the underlying bullets and suggested next steps — collapsed by default behind **show supporting detail**.
+- The current state badge (`Draft`, `Approved`, `Posted`, `Dismissed`, `Failed`).
+
+The view polls every 30 seconds, so when the post sweep flips an `approved` row to `posted` (or `failed`) you'll see it update without reloading.
+
+## Approving, editing, and dismissing drafts
+
+Each card on a non-posted worklog has three actions:
+
+<CardGroup cols={3}>
+  <Card title="Approve → post" icon="check">
+    Marks the worklog as `approved`. The post sweep picks it up within about 60 seconds and writes it to Jira.
+  </Card>
+  <Card title="Edit" icon="pen">
+    Opens the comment in an inline textarea. Saving re-drafts the worklog (you'll need to approve it again before it posts). The `edited` badge appears on cards you've touched.
+  </Card>
+  <Card title="Dismiss" icon="xmark">
+    Marks the worklog as `skipped`. It will not be posted and won't show up in the unapproved queue again.
+  </Card>
+</CardGroup>
+
+If a card is already `approved` but hasn't posted yet, the primary button becomes **Hold (un-approve)** so you can pull it back before the next sweep.
+
+When every draft on the page looks good, use **Approve all N drafts** at the top of the view to approve them in one click. Empty drafts (no synthesised comment) are skipped automatically.
+
+## The post sweep
+
+A background sweep in the daemon runs approximately every 60 seconds and posts every `approved` worklog it finds to Jira, marking each one `posted` on success or `failed` (with the error message) otherwise. This sweep is the **sole** path that writes to your tracker.
+
+If you can't wait for the next sweep — for example, you just approved a batch at the end of the day and want them all posted now — run:
+
+```bash
+meridian worklog-post-approved
+```
+
+The command runs exactly the same sweep on demand and exits when it's done.
+
+## Inspecting the day from the CLI
+
+For a no-SQL summary of a given day, including hours done, pending, and stuck, plus rows grouped by state and a flagged list of low-confidence or risk-flagged drafts to inspect first, use:
+
+```bash
+meridian worklog-status --day 2026-05-30
+```
+
+Omit `--day` to see today.
+
+## Configuration
+
+The PM-worklog stage runs inside the Rust daemon and uses the MLX server's synthesis endpoint to write each draft comment. Beyond connecting Jira, you typically don't need to set anything. A few optional tunables in `~/.meridian/.env`:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PM_WORKLOG_INTERVAL_HOURS` | `1.0` | How often the driver runs a drafting pass. Clamped to a 60-second floor. |
+| `PM_WORKLOG_MIN_CONFIDENCE` | `0.65` | Below this, drafts are flagged `low_confidence` for extra scrutiny. |
+| `PM_WORKLOG_READINESS_AGING_MIN` | `90` | Maximum minutes the driver will wait for an hour to settle before drafting anyway. |
+
+<Note>
+  There is no environment variable that enables automatic posting. The previous `PM_WORKLOG_POST_ENABLED` switch has been removed — approval in the Worklogs view is the only gate.
+</Note>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No worklogs appear in the view">
+    Drafts are produced once an hour by the daemon and only for tickets you have classified sessions against. Confirm with:
+
+    ```bash
+    meridian worklog-status
+    ```
+
+    If `hours done` is `0`, check that `meridian status` shows the daemon and MLX server running, and that Jira is connected (`meridian doctor`).
+  </Accordion>
+  <Accordion title="A worklog stays in 'Approved' and never becomes 'Posted'">
+    The post sweep runs roughly every 60 seconds. If a row hasn't posted after a minute or two, run the sweep manually to surface any error:
+
+    ```bash
+    meridian worklog-post-approved
+    ```
+
+    If the row flips to `Failed`, the card will display the underlying Jira error. Fix the cause (commonly a stale API token or a closed ticket) and approve again to retry.
+  </Accordion>
+  <Accordion title="A draft is empty">
+    If synthesis couldn't produce a useful comment — for example, the hour had too little signal — the draft renders as `(empty — nothing to post; edit to add a comment)`. Approve is disabled for empty drafts; either edit the comment yourself or dismiss the card.
+  </Accordion>
+</AccordionGroup>
