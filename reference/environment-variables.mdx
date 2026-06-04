@@ -23,6 +23,7 @@ These variables control how the Rust ETL daemon reads screenpipe data and writes
 | `MLX_SERVER_PORT` | `7823` | The port that the persistent MLX inference server listens on. Must match the value you passed to `install-mlx-server-daemon.sh`. |
 | `CLASSIFIER_BACKEND` | `hermes` | Classification backend. `hermes` is the default; set to `mlx` to use the local MLX inference server at `127.0.0.1:<MLX_SERVER_PORT>` instead. |
 | `CLASSIFICATION_TIMEOUT_S` | `120` | Maximum seconds the daemon waits for the MLX server to respond to a single session classification request before timing out and moving on. |
+| `MLX_MODEL_ID` | *(dynamic)* | Pin the MLX server to a specific model id (HuggingFace repo id, e.g. `mlx-community/Qwen3.5-9B-OptiQ-4bit`, or the `apple-intelligence` sentinel). When unset, the server picks a model at startup based on available Metal headroom and HuggingFace cache contents — see [Local LLM Selection](/concepts/local-llm-selection). An explicit pin bypasses dynamic selection and may trigger a model download on first start. |
 | `RUST_LOG` | `meridian=info` | Log verbosity for the Rust daemon, passed directly to the `env_logger` crate. Use `meridian=debug` for verbose output during troubleshooting. |
 
 <Note>

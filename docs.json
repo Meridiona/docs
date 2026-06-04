@@ -33,7 +33,8 @@
               "concepts/how-it-works",
               "concepts/sessions",
               "concepts/categories",
-              "concepts/task-classification"
+              "concepts/task-classification",
+              "concepts/local-llm-selection"
             ]
           },
           {
