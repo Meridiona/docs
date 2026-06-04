@@ -64,6 +64,37 @@ Meridian classifies each session into one of ten fixed categories. Each category
 | `research` | Browser research, reading |
 | `idle_personal` | Idle periods or non-work apps |
 
+## Staying up to date
+
+The dashboard sidebar shows the version of Meridian you have installed today, read from `~/.meridian/app/VERSION`. When a newer release is published, it also surfaces a one-click update prompt so you don't have to drop into a terminal to find out.
+
+### The update banner
+
+On each load, the dashboard asks the local server for the installed version and compares it against the latest `@meridiona/meridian` release on npm. When a newer version exists, the sidebar swaps the version label for an **Update available vX → vY** banner with an **Update now** button. When you're already on the latest version, the sidebar just shows the current version with no banner.
+
+The version check is best-effort and never blocks the dashboard:
+
+- Results are cached in memory for one hour, so the banner won't flicker between page loads.
+- The npm lookup has a five-second timeout. If it fails — for example, on a machine with no internet access — the sidebar simply shows the current version with no banner. There is no error toast and nothing to dismiss.
+
+### Clicking Update now
+
+Clicking **Update now** does **not** run the update inside the dashboard process. The update restarts the background daemons and may prompt for your password to write to a privileged npm prefix, so it has to be visible and interactive.
+
+Instead, the button asks the local server to launch a new **Terminal** window and run:
+
+```bash
+meridian update
+```
+
+Watch the Terminal window for progress — it will fetch the new package from npm, swap in the new binaries, and restart the launchd services. The dashboard tab will pick up the new version on its next reload.
+
+If the Terminal window doesn't open (for example, if you've disabled Terminal access for your browser), the response also includes the raw command so you can copy and run it yourself.
+
+<Note>
+  The dashboard only reads the npm registry for the version check and only launches Terminal locally. It never installs anything itself and never stores your password or any npm credentials.
+</Note>
+
 ## Logs and maintenance
 
 To tail the dashboard's log output:
