@@ -29,7 +29,19 @@ meridian restart
 
 </Accordion>
 
-<Accordion title="`meridian: command not found` after npm install">
+<Accordion title="`npm install -g` fails with EACCES">
+
+This happens when your npm global prefix is root-owned — typical with the stock macOS Node install at `/usr/local`. Running `npm install -g` (with or without `sudo`) is not the right fix; use the bootstrap one-liner instead. It redirects the prefix to `~/.npm-global` (user-owned), patches your shell profile so the change persists across terminals, and then installs Meridian and runs setup:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Meridiona/meridian/main/scripts/bootstrap.sh | bash
+```
+
+The script is idempotent and never uses `sudo`. Re-running it after a failed install is safe.
+
+</Accordion>
+
+<Accordion title="`meridian: command not found` after install">
 
 `npm install -g @meridiona/meridian` puts the CLI on the npm global bin path. If your shell can't find it, that directory is not on your `PATH`.
 
@@ -41,6 +53,8 @@ meridian restart
    ```
 
 3. Open a new shell or `source ~/.zshrc`.
+
+The bootstrap one-liner (`curl -fsSL .../bootstrap.sh | bash`) does this automatically — re-run it if you'd rather not edit your profile by hand.
 
 </Accordion>
 

@@ -11,15 +11,34 @@ This guide walks you through getting Meridian running on your machine for the fi
 </Note>
 
 <Steps>
-  <Step title="Install Meridian from npm">
-    Install the Meridian CLI globally, then run the one-time setup command:
+  <Step title="Install Meridian">
+    The recommended path is the bootstrap one-liner. It handles the most common stock-macOS gotcha (a root-owned npm prefix that makes `npm install -g` fail with `EACCES`) before installing Meridian and running setup:
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Meridiona/meridian/main/scripts/bootstrap.sh | bash
+    ```
+
+    The script verifies you're on Apple Silicon, confirms Homebrew and Node are present, redirects the npm global prefix to `~/.npm-global` (user-owned) if it's currently root-owned, patches your shell profile so the change persists, installs `@meridiona/meridian` from npm, and then hands off to `meridian setup`. Re-running is safe — every step is idempotent, and **`sudo` is never required**.
+
+    <Tip>
+      Prefer to inspect the script first? Download it, read it, then run it locally:
+
+      ```bash
+      curl -fsSL -o bootstrap.sh \
+        https://raw.githubusercontent.com/Meridiona/meridian/main/scripts/bootstrap.sh
+      less bootstrap.sh
+      bash bootstrap.sh
+      ```
+    </Tip>
+
+    If your npm global prefix is already user-writable (typical with Homebrew Node at `/opt/homebrew`), you can skip the bootstrap and install directly:
 
     ```bash
     npm install -g @meridiona/meridian
     meridian setup
     ```
 
-    `npm install` fetches the prebuilt app bundle from the registry. `meridian setup` copies the bundle into `~/.meridian/app`, installs any missing prerequisites (Homebrew packages, Python 3.11, screenpipe, ffmpeg), prepares the on-device model environment, and registers four launchd agents that start automatically:
+    Either way, `meridian setup` copies the prebuilt app bundle into `~/.meridian/app`, installs any missing prerequisites (Homebrew packages, Python 3.11, ffmpeg, screenpipe), prepares the on-device model environment, and registers four launchd agents that start automatically:
 
     | Service | Role |
     |---|---|
@@ -27,6 +46,10 @@ This guide walks you through getting Meridian running on your machine for the fi
     | **Meridian daemon** | The pipeline — ETL, classification, coding-agent ingest, worklog drafting |
     | **MLX server** | The on-device model used for classification and worklog synthesis |
     | **Dashboard** | The web UI at `http://localhost:3939` |
+
+    <Note>
+      **Piped install (`curl | bash`)** has no TTY for interactive prompts, so the bootstrap runs `meridian setup --skip-permissions` and reminds you to open a new terminal and run `meridian setup` to grant macOS permissions and collect tracker credentials. Running the script directly with `bash bootstrap.sh` hands off to the full interactive setup in the same terminal.
+    </Note>
 
     <Tip>
       Pin a specific version with `npm install -g @meridiona/meridian@<version>`. To update later, run `meridian update`.
@@ -149,6 +172,16 @@ meridian update
 
 ## Troubleshooting
 
+<Accordion title="`npm install -g` fails with EACCES">
+  Your npm global prefix is root-owned — typical with the stock macOS Node install at `/usr/local`. The bootstrap one-liner at the top of this page fixes this automatically by redirecting the prefix to `~/.npm-global` and patching your shell profile. Run it instead of `npm install -g` directly:
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/Meridiona/meridian/main/scripts/bootstrap.sh | bash
+  ```
+
+  Never run npm with `sudo` — that creates root-owned files in your home and breaks future installs.
+</Accordion>
+
 <Accordion title="meridian status shows a service as 'not running'">
   Run `meridian doctor` to identify the specific failure. The most common causes are a missing config file (re-run `meridian setup`), screenpipe permissions not yet granted (`meridian permissions`), or a Gatekeeper block on the unsigned binary — see the warning at the top of step 1.
 </Accordion>
@@ -172,7 +205,7 @@ meridian update
 
 ## Build from source (contributors only)
 
-If you're contributing to Meridian itself rather than just using it, clone the repository and run the source installer instead of `npm install`. This builds the daemon and dashboard from source and registers the same launchd services:
+If you're contributing to Meridian itself rather than just using it, clone the repository and run the source installer instead of the bootstrap one-liner. This builds the daemon and dashboard from source and registers the same launchd services:
 
 ```bash
 git clone https://github.com/Meridiona/meridian
@@ -180,4 +213,4 @@ cd meridian
 ./install.sh
 ```
 
-The source path is intended for development — use `meridian dev` to rebuild and restart after edits. Everyone else should stick with the npm install above.
+The source path is intended for development — use `meridian dev` to rebuild and restart after edits. Everyone else should stick with the bootstrap install above.
