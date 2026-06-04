@@ -94,6 +94,10 @@ This guide walks you through getting Meridian running on your machine for the fi
     ```
 
     The dashboard shows a real-time timeline of your app sessions, coloured by activity category, with a daily breakdown chart and session detail views. New sessions appear every 60 seconds as the daemon processes the latest screenpipe frames.
+
+    <Note>
+      **First sessions may show as uncategorized.** Until you connect a PM tracker (Jira, GitHub, or Linear) and it syncs its first batch of tickets — *and* the MLX classifier reports the model as loaded — Meridian pauses classification. Because the same LLM call assigns both the ticket link and the activity category, sessions appear without a category in the timeline and Home view during that window. Nothing is lost: held sessions categorize retroactively on the next polling cycle once both halves are ready. See [Pipeline readiness](/concepts/task-classification#pipeline-readiness-when-classification-actually-runs) for details.
+    </Note>
   </Step>
 </Steps>
 

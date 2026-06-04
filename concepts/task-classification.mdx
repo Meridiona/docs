@@ -78,6 +78,34 @@ Task classification runs entirely on your machine using a persistent MLX inferen
   </Step>
 </Steps>
 
+## Pipeline readiness: when classification actually runs
+
+Classification doesn't just need to be *configured* — both halves of the pipeline have to be *working* before any session is classified. Each polling cycle, Meridian probes:
+
+- **The MLX classifier** — `/health` must respond and `/info` must report the model as loaded (a short, positive readiness probe, not the 120-second cold-start wait).
+- **A PM tracker with synced tickets** — at least one row must exist in the `pm_tasks` table. Rows only land there after a provider authenticates and fetches successfully, so bad credentials keep the pipeline paused.
+
+If either side is down, the classifier **pauses without advancing its cursor**. The session waiting at the head of the queue, and any that accumulate behind it, are held — not skipped. The moment both halves come alive, the backlog drains and every queued session is classified retroactively on the next cycle. The worklog drafter sits behind the same gate (after the PM sync step, so a newly-connected tracker self-opens the gate without a daemon restart).
+
+<Note>
+  **First-run behavior.** Because the MLX classifier sets both `category` *and* `task_key` in the same call, pausing classification also pauses session **categorization**. On a fresh install — before any PM tracker is connected and synced — sessions appear as **uncategorized** in the activity timeline, the Home view, and any focus or category breakdown. This is most visible immediately after `npm install` and `meridian start`.
+
+  Nothing is lost. As soon as you connect Jira, GitHub, or Linear and the first sync populates `pm_tasks` (and the MLX server reports ready), every held session is categorized and linked retroactively on the next polling cycle.
+</Note>
+
+You can confirm both halves yourself:
+
+```bash
+# Is the MLX classifier loaded and ready?
+curl -s http://127.0.0.1:7823/health
+curl -s http://127.0.0.1:7823/info  # look for a non-null "loaded_at"
+
+# Has a PM tracker synced any tickets?
+sqlite3 ~/.meridian/meridian.db 'SELECT COUNT(*) FROM pm_tasks;'
+```
+
+If both return positive results, the next cycle will classify any held sessions. The daemon log records each pause with a `task linking paused` line and resumes silently once the gate opens.
+
 ## Disabling classification
 
 If you don't need ticket linking — or if you're running on a machine without Apple Silicon — you can disable classification entirely:

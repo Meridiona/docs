@@ -47,6 +47,10 @@ Navigate to `/sessions` to see every completed session for the current day, orde
 
 Navigate to `/apps` to see all-time usage statistics aggregated by application: total time, session count, average session length, and the last time each app was seen. A focus donut chart at the top highlights your top apps by cumulative time.
 
+<Note>
+  **Why are my sessions showing as uncategorized?** On a fresh install — or any time the MLX classifier is down or no PM tracker has synced yet — Meridian pauses classification, which also pauses category assignment (both come from the same on-device LLM call). Sessions still record normally and appear in the timeline; they just show without a category until both halves of the pipeline are ready. They categorize retroactively on the next polling cycle once the gate opens. See [Pipeline readiness](/concepts/task-classification#pipeline-readiness-when-classification-actually-runs) for the full mechanics.
+</Note>
+
 ## Activity categories
 
 Meridian classifies each session into one of ten fixed categories. Each category has a distinct color used consistently across the timeline, the category breakdown chart, and every session card:
