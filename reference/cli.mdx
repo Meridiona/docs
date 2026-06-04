@@ -130,33 +130,71 @@ The Rust daemon also writes structured JSON logs to `~/.meridian/logs/meridian-r
 
 </Accordion>
 
-<Accordion title="meridian doctor">
+<Accordion title="meridian doctor [--fix] [--dry-run] [--porcelain]">
 
 ```bash
+meridian doctor [--fix] [--dry-run] [--porcelain]
+```
+
+Runs a comprehensive, read-only system-health sweep across every Meridian daemon and prints a colourised (when stdout is a TTY) by-daemon table, a root-cause **Diagnosis** section, and an escalation footer when anything needs attention. The CLI wrapper delegates to the daemon binary's health engine — if the binary is missing or stale, a minimal bash fallback runs so `meridian doctor` always produces something useful.
+
+Run `meridian doctor` as the first diagnostic step whenever something seems wrong: a missed Jira sync, a blank dashboard, a misclassified session, or a daemon that looks alive but isn't producing output. Every check is content-free — counts, timestamps, status codes, reachability — never screen content or ticket text.
+
+**Check groups**
+
+| Group | What it looks at |
+|---|---|
+| `system` | macOS detected, disk free, `.env` present, required toolchains |
+| `meridian daemon` | ETL last-run status + freshness, frame cursor, summariser / classifier queue depth, subprocess-error sentinels |
+| `screenpipe` | binary on PATH, plist installed, process live, DB frames, frame freshness, blank-text rate (Screen Recording permission proxy), per-app accessibility share, WAL size |
+| `mlx-server` | `/health` reachability and backend, `/info` model-loaded readiness (liveness vs. readiness) |
+| `jira` | `/myself` auth (distinguishes 401 expired from 403 scope), ticket sync freshness, candidate-ticket completeness |
+| `ui` | launchd service up, `.next` built, `/` serves, a referenced `_next/static` asset fetches, serve mode (catches an `output: 'standalone'` build run with `next start`) |
+| `mcp server` | `packages/meridian-mcp/dist/index.js` built |
+| `worklog` | drafts awaiting review, hours stuck unprocessed, approved worklogs failing to post |
+| `coding-agent` | Claude Code and Codex CLI presence, JSONL session directories |
+| `observability` | OpenObserve reachability (so telemetry doesn't silently drop) |
+| `config` | cross-process contract — DB path agreement (`MERIDIAN_DB` vs. `MERIDIAN_DB_PATH`), settings-file split-brain, dead env vars like `POLL_INTERVAL_SECS` |
+
+Each row is `✓ ok`, `⊘ warn`, `· info`, or `✗ critical`. Failing rows show a `→` remedy line with the exact command to fix them. The exit code is `0` on a clean run and `1` when any check is critical.
+
+**Flags**
+
+| Flag | Description |
+|---|---|
+| `--fix` | Apply tiered repairs to the warnings the sweep finds — see below |
+| `--dry-run` | With `--fix`, plan the repairs without executing them |
+| `--porcelain` | Emit TSV rows instead of the rich table — for scripts and dashboards |
+
+**`--fix` repair tiers**
+
+| Tier | Behaviour |
+|---|---|
+| auto | Safe + idempotent (e.g. restart a dead service) — run silently |
+| guided | Shows the command and asks `y/N` before running (e.g. drain the summariser queue, re-classify sentinels, refresh Jira, rebuild UI). Defaults to **No** on non-interactive stdin so `--fix` never auto-runs a mutating action without a human. |
+| manual | Only a human can do it (regenerate a token, align settings) — printed as instructions |
+
+Anything still failing after `--fix` is escalated: a content-free diagnostic bundle is written to `~/.meridian/` so you can share it with the team or hand it off to `claude`.
+
+**Examples**
+
+```bash
+# Default: full sweep with table, diagnosis, and escalation footer
 meridian doctor
+
+# See what --fix would do, without changing anything
+meridian doctor --fix --dry-run
+
+# Apply auto fixes, prompt for guided ones, print remaining manuals
+meridian doctor --fix
+
+# Machine-readable TSV for a dashboard or CI gate
+meridian doctor --porcelain
 ```
 
-Runs a full suite of environment health checks and prints a pass/fail result for each one. Checks include:
-
-- macOS detected
-- `meridian-daemon` binary exists and is executable
-- Service `.plist` files are installed and pass `plutil -lint` (daemon, screenpipe, UI)
-- Daemon process is running
-- `~/.meridian/.env` configuration file exists
-- screenpipe binary is in `$PATH`
-- screenpipe database exists at `~/.screenpipe/db.sqlite`
-- screenpipe process is running
-- Python venv is set up and `run_agent` is importable
-- MCP server has been built (`packages/meridian-mcp/dist/index.js` exists)
-- Next.js UI has been built (`ui/.next` directory exists)
-
-At the end, `doctor` prints a count of failed checks. A clean run looks like:
-
-```
-✓ all checks passed
-```
-
-Run `meridian doctor` as the first diagnostic step whenever something seems wrong.
+<Note>
+The daemon also runs a subset of these checks (capture-layer / L1 only) as a startup preflight, logging warn/error to `daemon.log`. The preflight is non-fatal — the daemon still runs — so always confirm with `meridian doctor` if you suspect a fault.
+</Note>
 
 </Accordion>
 
