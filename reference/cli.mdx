@@ -187,6 +187,49 @@ Without Screen Recording permission, screenpipe cannot capture frames and Meridi
 
 </Accordion>
 
+<Accordion title="meridian pm-worklog [--day YYYY-MM-DD]">
+
+```bash
+meridian pm-worklog [--day YYYY-MM-DD]
+```
+
+Runs one pass of the PM-worklog drafter on the given day (defaults to today). For each ticket with classified sessions in a settled hour, Meridian collects the activity, calls the MLX server's synthesis endpoint, grounds the result against the evidence, and writes a `drafted` row to the database. **This command never posts to Jira** — every draft awaits approval in the dashboard's Worklogs view.
+
+The hourly daemon driver runs the same logic automatically. Run this command manually when you want to backfill drafts for an earlier day or replay drafting after fixing classification.
+
+See [Review and Approve Worklogs](/guides/worklogs) for the full approval flow.
+
+</Accordion>
+
+<Accordion title="meridian worklog-post-approved">
+
+```bash
+meridian worklog-post-approved
+```
+
+Runs the post sweep on demand: finds every worklog you have marked `approved` in the dashboard's Worklogs view and writes it to Jira, flipping the row to `posted` (or `failed` with the underlying error). This is the same sweep the daemon runs automatically every ~60 seconds — use this command when you want to flush approvals immediately rather than wait for the next tick.
+
+This is the **only** path Meridian uses to write worklogs to Jira.
+
+</Accordion>
+
+<Accordion title="meridian worklog-status [--day YYYY-MM-DD]">
+
+```bash
+meridian worklog-status [--day YYYY-MM-DD]
+```
+
+Prints a human-readable summary of the PM-worklog stage for the given day (defaults to today), without touching SQL:
+
+- Hours done, pending, and stuck for the day.
+- Counts of worklogs by state (`drafted`, `approved`, `posted`, `skipped`, `failed`).
+- A per-ticket table with the synthesised Jira comment.
+- A **flagged** list of low-confidence or risk-flagged drafts to inspect before approving.
+
+Run this command to triage the day before opening the Worklogs view.
+
+</Accordion>
+
 <Accordion title="meridian uninstall">
 
 ```bash
