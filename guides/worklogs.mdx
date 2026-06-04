@@ -70,13 +70,29 @@ Each card on a non-posted worklog has three actions:
     Opens the comment in an inline textarea. Saving re-drafts the worklog (you'll need to approve it again before it posts). The `edited` badge appears on cards you've touched.
   </Card>
   <Card title="Dismiss" icon="xmark">
-    Marks the worklog as `skipped`. It will not be posted and won't show up in the unapproved queue again.
+    Marks the worklog as `skipped` after asking *where the time should have gone* — see [Dismissing a draft and correcting attribution](#dismissing-a-draft-and-correcting-attribution).
   </Card>
 </CardGroup>
 
 If a card is already `approved` but hasn't posted yet, the primary button becomes **Hold (un-approve)** so you can pull it back before the next sweep.
 
 When every draft on the page looks good, use **Approve all N drafts** at the top of the view to approve them in one click. Empty drafts (no synthesised comment) are skipped automatically.
+
+## Dismissing a draft and correcting attribution
+
+When you click **Dismiss** on a draft, the card expands into an attribution picker asking *"Where should this time have gone?"*. You're not just rejecting the worklog — you're labelling what the classifier got wrong. Pick one of:
+
+- **Another open ticket** — the work belonged to a different task. Meridian records the corrected `task_key` as the ground truth for that hour.
+- **Untracked / personal** — the activity wasn't billable work at all. Meridian records that the hour should not have produced any worklog.
+- **Just dismiss — not sure** — you don't have a clear answer; the worklog is dismissed with no attribution label.
+
+After choosing, click **Dismiss worklog** to confirm. The worklog moves to `skipped` and the correction is stored alongside the existing edit history as immutable review feedback.
+
+Every approve, reject, and un-approve action is recorded the same way — not just edits — so Meridian retains a complete history of how each draft was reviewed even though only the latest state is shown on the card. This feedback feeds the classifier evaluation pipeline; over time, drafts you reject with corrections help Meridian get attribution right on similar sessions.
+
+<Note>
+  No external system is told about the correction — it's stored locally in your Meridian database for evaluation only.
+</Note>
 
 ## The post sweep
 
