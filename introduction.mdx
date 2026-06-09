@@ -26,21 +26,23 @@ Each session captures the app you were using, how long you used it, the window t
 
 **MCP server** — Meridian ships a TypeScript MCP server that exposes your structured session data to any MCP-compatible AI tool, including Claude Code, Claude Desktop, and Cursor. Query your activity history in plain language, ask for summaries, or feed live context into your AI assistant.
 
-**Local dashboard** — A Next.js UI at `http://localhost:3000` gives you a real-time timeline of your sessions, daily category breakdowns, and session detail views. It reads directly from the local database and requires no account or login.
+**Local dashboard** — A Next.js UI at `http://localhost:3939` gives you a real-time timeline of your sessions, daily category breakdowns, and session detail views. It reads directly from the local database and requires no account or login.
 
 ## System requirements
 
-Before installing, confirm your machine meets the following requirements:
+Meridian is distributed as an npm package that ships a **prebuilt binary** — there is no source checkout and no Rust or Python build step on your machine. You only need:
 
 | Requirement | Version / Notes |
 |---|---|
-| **macOS** | 13 or later, Apple Silicon (the MLX inference server requires Metal) |
-| **screenpipe** | Must be installed and running before Meridian starts |
-| **Rust** | 1.93.1 — the installer picks up `rust-toolchain.toml` automatically |
-| **Python** | 3.13 — install via `brew install python@3.13` or `pyenv install 3.13` |
-| **Node.js** | 18 or later — required for the MCP server and dashboard |
+| **macOS** | Apple Silicon (M1 or later). The on-device model requires Metal; Intel Macs are not supported. |
+| **Node.js** | Any modern version — needed only for `npm install -g`. Install with `brew install node` if you don't have it. |
+| **screenpipe** | Installed automatically by `meridian setup` if it's missing. |
 
-The installer detects any missing prerequisites and offers to install them via Homebrew before proceeding.
+`meridian setup` installs the remaining prerequisites (Homebrew packages, Python 3.11, ffmpeg, screenpipe) and downloads the on-device model on first run. Contributors who want to build from source need Rust 1.93.1 and Python 3.11 instead — see the [Quickstart](/quickstart#build-from-source-contributors-only).
+
+<Note>
+  **Unsigned v1 builds.** The current release ships an unsigned binary, so macOS Gatekeeper may block it on first launch. Clear the quarantine attribute with `xattr -dr com.apple.quarantine ~/.meridian/app` and run `meridian restart`.
+</Note>
 
 <Note>
   **Local-first by design.** Meridian never sends your screen recordings, OCR text, or session data to any remote server. All inference runs on-device via the MLX server. The only outbound network calls are the ticket updates you explicitly configure — to your own Jira instance, GitHub org, or Linear workspace.
@@ -54,7 +56,7 @@ The installer detects any missing prerequisites and offers to install them via H
     icon="rocket"
     href="/quickstart"
   >
-    Install Meridian, grant permissions, and see your first sessions in the dashboard.
+    Install Meridian from npm, grant permissions, and see your first sessions in the dashboard.
   </Card>
   <Card
     title="Configuration"

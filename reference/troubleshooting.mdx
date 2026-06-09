@@ -16,9 +16,51 @@ The sections below cover the most common failure patterns in more detail.
 
 ## Installation & Setup
 
-<Accordion title="install.sh fails at the Homebrew step">
+<Accordion title="macOS Gatekeeper blocks the binary on first launch (unsigned v1)">
 
-The installer uses Homebrew to install system dependencies (Rust, Node, Python, screenpipe). If it fails at this step:
+The current Meridian release ships an unsigned binary, so macOS may quarantine it on first launch with a "cannot be opened because the developer cannot be verified" error.
+
+Clear the quarantine attribute and restart:
+
+```bash
+xattr -dr com.apple.quarantine ~/.meridian/app
+meridian restart
+```
+
+</Accordion>
+
+<Accordion title="`npm install -g` fails with EACCES">
+
+This happens when your npm global prefix is root-owned — typical with the stock macOS Node install at `/usr/local`. Running `npm install -g` (with or without `sudo`) is not the right fix; use the bootstrap one-liner instead. It redirects the prefix to `~/.npm-global` (user-owned), patches your shell profile so the change persists across terminals, and then installs Meridian and runs setup:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Meridiona/meridian/main/scripts/bootstrap.sh | bash
+```
+
+The script is idempotent and never uses `sudo`. Re-running it after a failed install is safe.
+
+</Accordion>
+
+<Accordion title="`meridian: command not found` after install">
+
+`npm install -g @meridiona/meridian` puts the CLI on the npm global bin path. If your shell can't find it, that directory is not on your `PATH`.
+
+1. Find the npm global bin: `npm bin -g` (typical values: `/usr/local/bin`, `~/.npm-global/bin`, or `~/.local/bin`).
+2. Add it to your `PATH` in `~/.zshrc` (or `~/.bashrc`):
+
+   ```bash
+   export PATH="$(npm bin -g):$PATH"
+   ```
+
+3. Open a new shell or `source ~/.zshrc`.
+
+The bootstrap one-liner (`curl -fsSL .../bootstrap.sh | bash`) does this automatically — re-run it if you'd rather not edit your profile by hand.
+
+</Accordion>
+
+<Accordion title="`meridian setup` fails at the Homebrew step">
+
+`meridian setup` uses Homebrew to install system dependencies (Python 3.11, ffmpeg, screenpipe). If it fails at this step:
 
 1. Make sure you have an active internet connection.
 2. Ensure Xcode Command Line Tools are installed:
@@ -27,52 +69,17 @@ The installer uses Homebrew to install system dependencies (Rust, Node, Python, 
 xcode-select --install
 ```
 
-If the tools are already installed, the command exits immediately with a message to that effect. Otherwise, follow the on-screen prompt and re-run `./install.sh` after the installation completes.
+If the tools are already installed, the command exits immediately with a message to that effect. Otherwise, follow the on-screen prompt and re-run `meridian setup` after the installation completes.
 
 </Accordion>
 
-<Accordion title="Rust build fails">
+<Accordion title="Source build: Rust or Python setup fails">
 
-Meridian compiles the ETL daemon from Rust source. If the build fails, first check that the correct toolchain is active:
+These errors only apply to contributors who cloned the repo and ran `./install.sh` instead of installing from npm. The npm distribution ships a prebuilt binary and never needs Rust or a Python toolchain on your machine.
 
-```bash
-rustup show
-```
+**Rust toolchain:** `rustup show` should report a stable toolchain for `aarch64-apple-darwin`. If `rustup` itself is missing, install it from [rustup.rs](https://rustup.rs/). `rust-toolchain.toml` in the repo pins the required version.
 
-The output should show a stable toolchain for `aarch64-apple-darwin` (Apple Silicon) or `x86_64-apple-darwin`. If `rustup` is not found at all, install it:
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-Then re-run `./install.sh`. The `rust-toolchain.toml` file in the repo root pins the exact version the project requires, so `rustup` picks it up automatically.
-
-</Accordion>
-
-<Accordion title="Python venv setup fails">
-
-The Python services (MLX inference server, Jira updater, task classifier) require Python 3.13. Check whether it is installed:
-
-```bash
-python3.13 --version
-```
-
-If the command is not found, install it via Homebrew or pyenv:
-
-```bash
-# Homebrew
-brew install python@3.13
-
-# pyenv
-pyenv install 3.13
-pyenv global 3.13
-```
-
-After installing Python 3.13, re-run the service setup:
-
-```bash
-bash scripts/setup-services.sh
-```
+**Python:** the source build requires Python 3.11 (`brew install python@3.11` or `pyenv install 3.11`). After installing, re-run `./install.sh`.
 
 </Accordion>
 
@@ -84,21 +91,18 @@ bash scripts/setup-services.sh
 
 The Rust daemon TCP-connects to the MLX inference server before entering its poll loop. If the MLX server is not running, the daemon exits immediately with an error message in the log.
 
-**Fix — install and start the MLX server daemon:**
+**Fix — restart the stack so launchd brings the MLX server back up:**
 
 ```bash
-bash services/scripts/install-mlx-server-daemon.sh
-```
-
-Then check that it started:
-
-```bash
+meridian restart
 meridian logs mlx-server -f
 ```
 
-Wait until you see `server: MLX model ready` (this can take up to 30 seconds on first run while the model downloads).
+Wait until you see `server: MLX model ready` (this can take a few minutes on the very first run while the ~6 GB model downloads, then ~5 seconds from cache thereafter).
 
-Alternatively, if you do not need session classification, set `CLASSIFICATION_ENABLED=false` in `~/.meridian/.env` and restart:
+If the MLX plist is missing entirely (e.g. `meridian status` reports `not installed`), re-run `meridian setup` to re-register the launchd agents.
+
+Alternatively, if you do not need session classification, set `CLASSIFICATION_ENABLED=false` in `~/.meridian/app/.env` and restart:
 
 ```bash
 meridian config edit   # set CLASSIFICATION_ENABLED=false
@@ -161,7 +165,7 @@ meridian config edit    # verify SCREENPIPE_DB if you customised it
 
 A 401 from the Jira API means either `JIRA_EMAIL` or `JIRA_API_TOKEN` is wrong, or the token has been revoked.
 
-1. Open `~/.meridian/.env` with `meridian config edit`.
+1. Open `~/.meridian/app/.env` with `meridian config edit`.
 2. Verify that `JIRA_EMAIL` matches the email address of the Atlassian account that owns the token.
 3. Regenerate the token at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens) and paste the new value into `JIRA_API_TOKEN`.
 4. Restart: `meridian restart`.
@@ -193,20 +197,21 @@ python3 scripts/refresh_pm_tasks.py --jql "project=KAN ORDER BY updated DESC"
 A GitHub 401 means the personal access token is expired, revoked, or was created without the `repo` scope.
 
 1. Go to [github.com/settings/tokens](https://github.com/settings/tokens) and create a new classic PAT with at minimum the `repo` scope.
-2. Update `GITHUB_TOKEN` in `~/.meridian/.env` via `meridian config edit`.
+2. Update `GITHUB_TOKEN` in `~/.meridian/app/.env` via `meridian config edit`.
 3. Restart: `meridian restart`.
 
 </Accordion>
 
 <Accordion title="Linear: no tasks are loading">
 
-1. Verify `LINEAR_API_KEY` is set correctly in `~/.meridian/.env`.
+1. Verify `LINEAR_API_KEY` is set correctly in `~/.meridian/app/.env`.
 2. Check `LINEAR_TEAM_IDS` — if set, confirm the team IDs are correct (visible in Linear's workspace settings URL).
 3. Ensure the teams have open issues in a status that the connector picks up.
-4. Check the jira-updater log (which also handles Linear sync) for error messages:
+4. Check the daemon log (which handles all tracker sync) for error messages:
 
 ```bash
-meridian logs jira-updater -n 100
+meridian logs daemon -n 100
+meridian logs daemon-error -n 100
 ```
 
 </Accordion>
@@ -277,7 +282,7 @@ Run the guided permissions walkthrough:
 meridian permissions
 ```
 
-The command opens the Screen Recording, Accessibility, and Microphone System Settings panes in sequence and waits for you to confirm each one. After granting access, restart the stack:
+The command opens the Screen Recording and Accessibility System Settings panes in sequence and waits for you to confirm each one. (Audio capture is disabled, so no Microphone permission is required.) After granting access, restart the stack:
 
 ```bash
 meridian restart
@@ -289,26 +294,11 @@ You must restart screenpipe after granting Screen Recording permission. The perm
 
 </Accordion>
 
-<Accordion title="No audio transcription in sessions">
-
-Audio transcription requires the Microphone permission. screenpipe appears in the Microphone pane only after it has first tried to access the microphone — this happens automatically once Screen Recording is granted and screenpipe is running.
-
-If screenpipe is not listed in the Microphone pane yet:
-
-1. Ensure Screen Recording is already granted.
-2. Start screenpipe: `meridian start`.
-3. Wait a few seconds, then open System Settings → Privacy & Security → Microphone.
-4. Toggle screenpipe on.
-
-Alternatively, run `meridian permissions` to open all three panes in the correct order.
-
-</Accordion>
-
 ---
 
 ## Dashboard
 
-<Accordion title="http://localhost:3000 is not loading">
+<Accordion title="http://localhost:3939 is not loading">
 
 1. Check whether the UI service is running:
 
@@ -323,17 +313,12 @@ meridian logs ui
 meridian logs ui-error
 ```
 
-3. If the UI has not been built yet (e.g. after a fresh clone or `--no-ui` install), build it:
+3. If the UI plist is missing entirely (`not installed`), re-run `meridian setup` to re-register the launchd agents.
+
+4. If the port is in use, set `MERIDIAN_UI_PORT` in `~/.meridian/app/.env` to something else and restart:
 
 ```bash
-cd ui
-npm ci
-npm run build
-```
-
-4. Then bring the service back up:
-
-```bash
+meridian config edit
 meridian restart
 ```
 

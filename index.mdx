@@ -19,7 +19,7 @@ Meridian is a local-first ambient automation daemon that reads your screen activ
     icon="rocket"
     href="/quickstart"
   >
-    Clone, install, and have Meridian running and syncing tickets in under 15 minutes.
+    Install from npm and have Meridian running and drafting worklogs in under 10 minutes.
   </Card>
   <Card
     title="MCP Server Setup"
@@ -41,23 +41,26 @@ Meridian is a local-first ambient automation daemon that reads your screen activ
 
 <Steps>
   <Step title="Install">
-    Clone the repository and run the installer. It handles every dependency — Homebrew, Rust, Node, Python, screenpipe — and registers Meridian's background daemons automatically.
+    Install the Meridian CLI from npm and run the one-time setup. The bundle ships a prebuilt binary — no clone, no compiler — and `meridian setup` installs any missing prerequisites (Homebrew packages, Python, screenpipe, ffmpeg) and registers the background services.
 
     ```bash
-    git clone https://github.com/meridiona/meridian
-    cd meridian
-    ./install.sh
+    npm install -g @meridiona/meridian
+    meridian setup
     ```
   </Step>
   <Step title="Configure">
-    The installer walks you through an interactive credential prompt. Enter your OpenRouter API key plus credentials for any PM tools you use (Jira, GitHub, Linear). Skip any service you don't need by pressing Enter.
-  </Step>
-  <Step title="Start">
-    Bring all daemons up with a single command, then open the dashboard to see your first sessions appear.
+    Open the config in your `$EDITOR` and add credentials for the tracker you use (Jira, Linear, or GitHub):
 
     ```bash
-    meridian start
-    # Dashboard → http://localhost:3000
+    meridian config edit
+    ```
+  </Step>
+  <Step title="Start">
+    The setup command registers launchd agents that start automatically. Confirm everything is up and open the dashboard:
+
+    ```bash
+    meridian status
+    # Dashboard → http://localhost:3939
     ```
   </Step>
 </Steps>

@@ -37,10 +37,10 @@ Set the following environment variables. The cleanest way is to open the Meridia
 meridian config edit
 ```
 
-This opens `~/.meridian/.env` in your `$EDITOR`. Add or update the Jira block:
+This opens `~/.meridian/app/.env` in your `$EDITOR`. Add or update the Jira block:
 
 ```bash
-# ~/.meridian/.env
+# ~/.meridian/app/.env
 
 JIRA_BASE_URL=https://your-org.atlassian.net
 JIRA_EMAIL=you@your-org.com
@@ -54,12 +54,6 @@ JIRA_API_TOKEN=your-api-token-here
   Meridian only reads your Jira tickets for classification. It never creates, modifies, closes, or deletes tickets on your behalf.
 </Note>
 
-Alternatively, re-run the installer's credential walkthrough to be prompted interactively:
-
-```bash
-./install.sh --skip-permissions
-```
-
 ## Apply and verify
 
 <Steps>
@@ -67,7 +61,7 @@ Alternatively, re-run the installer's credential walkthrough to be prompted inte
     ```bash
     meridian restart
     ```
-    The daemon re-reads `~/.meridian/.env` on startup and refreshes the `pm_tasks` cache from Jira within the first poll cycle.
+    The daemon re-reads `~/.meridian/app/.env` on startup and refreshes the `pm_tasks` cache from Jira within the first poll cycle.
   </Step>
   <Step title="Run a health check">
     ```bash
@@ -117,7 +111,7 @@ python3 scripts/refresh_pm_tasks.py \
   --db ~/.meridian/meridian.db
 ```
 
-The script reads your credentials from `~/.meridian/.env` automatically — no extra configuration needed.
+The script reads your credentials from `~/.meridian/app/.env` automatically — no extra configuration needed. (The script ships in the source repo; it's a contributor utility, not part of the npm distribution.)
 
 ## Troubleshooting
 

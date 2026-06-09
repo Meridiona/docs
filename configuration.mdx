@@ -4,34 +4,30 @@ sidebarTitle: "Configuration"
 description: "Learn where Meridian's config files live, how to edit them, and what every environment variable does — from polling intervals to PM credentials."
 ---
 
-Meridian is configured entirely through environment variables. There are no config files with special formats or UI settings to hunt down — every option is a key-value pair in a `.env` file. The installer creates these files and populates them during the credential walkthrough, but you can edit them at any time.
+Meridian is configured entirely through environment variables. There are no config files with special formats or UI settings to hunt down — every option is a key-value pair in a single `.env` file. `meridian setup` creates the file and you can edit it at any time.
 
 ## Where configuration lives
 
-Meridian uses two env files, one per process boundary:
+The npm install lays out the runtime under `~/.meridian/`:
 
-| File | Used by |
+| Path | Purpose |
 |---|---|
-| `~/.meridian/.env` | The Rust daemon — core settings and PM credentials |
-| `services/.env` | The Python agents — LLM endpoint and Jira credentials |
+| `~/.meridian/app/.env` | The one backend config — read by the daemon, classifier, and worklog stage. |
+| `~/.meridian/meridian.db` | The session database. |
+| `~/.meridian/logs/` | Per-service logs (daemon, MLX server, screenpipe, UI). |
+| `~/Library/LaunchAgents/com.meridiona.*.plist` | The launchd agents registered by `meridian setup`. |
 
-A third internal env file is managed automatically by the installer and holds the `OPENROUTER_API_KEY` for cloud LLM fallback. In practice you never need to touch it directly — the installer keeps it in sync with the values you provide during setup.
+Contributors building from source share the same on-disk layout, except their config lives at the **repo-root `.env`** instead of `~/.meridian/app/.env` (the source checkout is what `meridian dev` runs against).
 
 ## Editing configuration
 
-To open the daemon config in your `$EDITOR`, run:
+To open the config in your `$EDITOR`, run:
 
 ```bash
 meridian config edit
 ```
 
-This opens `~/.meridian/.env`. To edit the Python agents config, open `services/.env` directly:
-
-```bash
-$EDITOR services/.env
-```
-
-After saving, restart the relevant daemon for the change to take effect:
+This opens `~/.meridian/app/.env` (or the repo-root `.env` for source builds). After saving, restart for the change to take effect:
 
 ```bash
 meridian restart
@@ -91,7 +87,7 @@ The API key is required to enable the Linear connector. `LINEAR_TEAM_IDS` is opt
 
 The smallest configuration that enables activity tracking, session categorisation, and Jira ticket sync is:
 
-```bash title="~/.meridian/.env"
+```bash title="~/.meridian/app/.env"
 # Required for task classification and Jira sync
 JIRA_BASE_URL=https://your-org.atlassian.net
 JIRA_EMAIL=you@your-org.com
@@ -103,24 +99,17 @@ CLASSIFICATION_ENABLED=true
 
 Everything else defaults to safe values and can be added incrementally.
 
-## Re-running credential prompts
+## Editing credentials later
 
-The installer skips any variable that already has a value in the relevant `.env` file. To re-prompt for a specific credential, delete that line from the file and re-run the installer:
+The npm install does not include an interactive credential prompt — edit the file directly:
 
 ```bash
-# 1. Remove the line you want to re-set (e.g. JIRA_API_TOKEN)
 meridian config edit
-
-# 2. Re-run the installer — it will prompt only for missing values
-./install.sh --skip-permissions
+meridian restart
 ```
 
-If you want to bypass the credential prompts entirely and manage the files yourself, pass `--skip-env`:
-
-```bash
-./install.sh --skip-env
-```
+Contributors who built from source can re-run `./install.sh --skip-permissions` to be re-prompted for any variable that isn't already set; `./install.sh --skip-env` bypasses the prompt flow entirely.
 
 <Tip>
-  You can also edit `~/.meridian/.env` directly with any text editor and then run `meridian restart`. The installer's prompt flow is a convenience, not a requirement.
+  You can edit the `.env` with any text editor and then run `meridian restart`. The daemon reads the file once at startup and does not hot-reload changes.
 </Tip>

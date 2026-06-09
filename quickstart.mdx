@@ -1,145 +1,216 @@
 ---
 title: "Quickstart: From Zero to a Running Meridian Install"
 sidebarTitle: "Quickstart"
-description: "Clone Meridian, grant screenpipe permissions, enter your credentials, and get automatic ticket updates flowing — step by step, from zero to running."
+description: "Install Meridian from npm, grant screenpipe permissions, connect your issue tracker, and get automatic worklog drafts flowing — step by step, from zero to running."
 ---
 
-This guide walks you through getting Meridian running on your machine for the first time. By the end you'll have all background daemons running, your PM credentials configured, and your first activity sessions appearing in the dashboard. The whole process takes about 15 minutes, mostly waiting for Rust to compile and the MLX model to download on its first run.
+This guide walks you through getting Meridian running on your machine for the first time. Meridian is distributed as an npm package that ships a prebuilt binary — there is nothing to clone and nothing to compile. By the end you'll have all background services running, your issue tracker connected, and your first activity sessions appearing in the dashboard. The whole process takes about 10 minutes, mostly spent waiting for the on-device model to download on first run.
 
-<Tip>
-  Run `./install.sh --dry-run` to preview every action the installer would take without actually executing anything. This is a good way to understand the installation before committing to it.
-</Tip>
+<Note>
+  **Platform:** macOS on **Apple Silicon** (M1 or later). The on-device model requires Metal; Intel Macs are not supported. You also need Node.js (any modern version) for `npm` — `brew install node` if you don't already have it.
+</Note>
 
 <Steps>
-  <Step title="Clone the repository and run the installer">
-    Clone Meridian and run `install.sh` from the repository root. The installer detects missing prerequisites (Homebrew, Rust, Node 18+, Python 3.13, screenpipe) and offers to install each one before proceeding. It then builds the Rust daemon, the MCP server, the Next.js dashboard, and the Python services, and registers background launchd agents for each service.
+  <Step title="Install Meridian">
+    The recommended path is the bootstrap one-liner. It handles the most common stock-macOS gotcha (a root-owned npm prefix that makes `npm install -g` fail with `EACCES`) before installing Meridian and running setup:
 
     ```bash
-    git clone https://github.com/meridiona/meridian
-    cd meridian
-    ./install.sh
+    curl -fsSL https://raw.githubusercontent.com/Meridiona/meridian/main/scripts/bootstrap.sh | bash
     ```
 
-    The following flags are available if you want to customise the installation:
+    The script verifies you're on Apple Silicon, confirms Homebrew and Node are present, redirects the npm global prefix to `~/.npm-global` (user-owned) if it's currently root-owned, patches your shell profile so the change persists, installs `@meridiona/meridian` from npm, and then hands off to `meridian setup`. Re-running is safe — every step is idempotent, and **`sudo` is never required**.
 
-    | Flag | Effect |
+    <Tip>
+      Prefer to inspect the script first? Download it, read it, then run it locally:
+
+      ```bash
+      curl -fsSL -o bootstrap.sh \
+        https://raw.githubusercontent.com/Meridiona/meridian/main/scripts/bootstrap.sh
+      less bootstrap.sh
+      bash bootstrap.sh
+      ```
+    </Tip>
+
+    If your npm global prefix is already user-writable (typical with Homebrew Node at `/opt/homebrew`), you can skip the bootstrap and install directly:
+
+    ```bash
+    npm install -g @meridiona/meridian
+    meridian setup
+    ```
+
+    Either way, `meridian setup` copies the prebuilt app bundle into `~/.meridian/app`, installs any missing prerequisites (Homebrew packages, Python 3.11, ffmpeg, screenpipe), prepares the on-device model environment, and registers four launchd agents that start automatically:
+
+    | Service | Role |
     |---|---|
-    | `--no-ui` | Skip building the Next.js dashboard |
-    | `--dry-run` | Preview all actions without executing any of them |
-    | `--no-daemon` | Build everything but do not register launchd agents |
-    | `--skip-permissions` | Skip the macOS permissions walkthrough |
-    | `--skip-env` | Skip the interactive credential prompts entirely |
-    | `--mlx` | Set up the persistent MLX inference server for task classification |
+    | **screenpipe** | Captures your screen activity (the data source; audio capture is disabled) |
+    | **Meridian daemon** | The pipeline — ETL, classification, coding-agent ingest, worklog drafting |
+    | **MLX server** | The on-device model used for classification and worklog synthesis |
+    | **Dashboard** | The web UI at `http://localhost:3939` |
 
+    <Note>
+      **Piped install (`curl | bash`)** has no TTY for interactive prompts, so the bootstrap runs `meridian setup --skip-permissions` and reminds you to open a new terminal and run `meridian setup` to grant macOS permissions and collect tracker credentials. Running the script directly with `bash bootstrap.sh` hands off to the full interactive setup in the same terminal.
+    </Note>
+
+    <Tip>
+      Pin a specific version with `npm install -g @meridiona/meridian@<version>`. To update later, run `meridian update`.
+    </Tip>
+
+    <Warning>
+      **Gatekeeper bypass (unsigned v1 builds).** The current release ships an unsigned binary. If macOS blocks it on first run, clear the quarantine attribute and restart:
+
+      ```bash
+      xattr -dr com.apple.quarantine ~/.meridian/app
+      meridian restart
+      ```
+    </Warning>
   </Step>
   <Step title="Grant screenpipe the required macOS permissions">
-    screenpipe needs three macOS privacy permissions to record your screen activity. The installer walks you through each one interactively. If you skipped that step or need to re-grant permissions later, run:
+    screenpipe needs two macOS privacy permissions that only **you** can grant. `meridian setup` opens each pane interactively; if you skipped that step or need to re-grant later, run:
 
     ```bash
     meridian permissions
     ```
 
-    The three permissions screenpipe requires are:
+    The two permissions screenpipe requires are:
 
     - **Screen Recording** — to capture frames and OCR text
     - **Accessibility** — to read window titles and accessibility tree events
-    - **Microphone** — to transcribe audio (optional but recommended for meeting context)
 
     <Note>
-      For Screen Recording and Accessibility, click the **+** button in the System Settings pane, navigate to the screenpipe binary, and toggle it on. The Microphone pane works differently — screenpipe will appear there automatically after it first requests mic access. If it isn't listed yet, grant Screen Recording first, then check back.
+      For each pane, click the **+** button in System Settings, navigate to the screenpipe binary, and toggle it on. Audio capture is disabled by default, so no Microphone permission is required.
     </Note>
+
+    After granting access, run `meridian restart` so screenpipe picks up the permissions.
   </Step>
-  <Step title="Configure your credentials">
-    Immediately after the build, the installer prompts you for credentials grouped by service. Press **Enter** on any prompt to skip that variable — you can always add it later.
-
-    The installer collects:
-
-    - **OpenRouter API key** (`OPENROUTER_API_KEY`) — for cloud LLM inference. Skip this if you're running entirely local with MLX.
-    - **Jira** — your Atlassian base URL, email address, API token, and optionally a comma-separated list of project keys to scope ticket lookups.
-    - **GitHub** — a personal access token, your org name, and optionally a comma-separated list of repos.
-    - **Linear** — an API key and optionally a comma-separated list of team IDs.
-
-    Values you've already entered are preserved on re-runs; the installer never overwrites an existing value. To update a credential after installation, run:
+  <Step title="Connect your issue tracker">
+    Meridian drafts worklogs against tickets assigned to you. It supports Jira, Linear, and GitHub — pick whichever you use (you can configure more than one). Open the config in your `$EDITOR`:
 
     ```bash
     meridian config edit
     ```
 
-    This opens `~/.meridian/.env` in your `$EDITOR`. See the [Configuration](/configuration) page for the full variable reference.
-  </Step>
-  <Step title="Start Meridian">
-    Bring all daemons up with a single command:
+    This opens `~/.meridian/app/.env`. Add the block for your tracker. For Jira, that's:
 
     ```bash
-    meridian start
+    JIRA_BASE_URL=https://your-org.atlassian.net
+    JIRA_EMAIL=you@your-org.com
+    JIRA_API_TOKEN=your-api-token
+    # JIRA_PROJECT_KEYS=KAN,ENG   # optional filter; empty = all projects
+
+    CLASSIFICATION_ENABLED=true
     ```
 
-    Then confirm everything is running:
+    Save, then restart:
+
+    ```bash
+    meridian restart
+    ```
+
+    See the [Jira](/guides/jira) and [GitHub & Linear](/guides/github-linear) guides for the equivalent setup for each tracker, and the [Configuration](/configuration) page for the full variable reference.
+  </Step>
+  <Step title="Verify everything is running">
+    Confirm all four services are up:
 
     ```bash
     meridian status
     ```
 
-    You should see all services — `com.meridiona.screenpipe`, `com.meridiona.daemon`, `com.meridiona.jira-updater`, `com.meridiona.ui`, `com.meridiona.mlx-server`, and `com.meridiona.coding-agent-indexer` — reported as running with their process IDs.
+    You should see `com.meridiona.screenpipe`, `com.meridiona.daemon`, `com.meridiona.mlx-server`, and `com.meridiona.ui` reported as running with their process IDs. If anything is off, run `meridian doctor` for a full health check.
 
     <Note>
-      **MLX inference server for task classification.** If you installed with `--mlx`, Meridian uses a persistent MLX inference server (Qwen3.5-9B, running on-device via Metal) for session-to-ticket classification. On first start, the model downloads to your local cache (~6.6 GB) — this can take a few minutes depending on your connection speed. Subsequent starts load from cache in around 5 seconds. Watch the server come up with `meridian logs mlx-server`. If you haven't set up the MLX server, set `CLASSIFICATION_ENABLED=false` in `~/.meridian/.env` to run in activity-tracking mode without ticket classification.
+      **First-run model download.** On the first `meridian start` after install, the MLX server downloads the on-device model (~6 GB) into your local cache. Subsequent starts load from cache in around 5 seconds. Tail the progress with `meridian logs mlx-server -f` — you'll see `MLX model ready` once it's loaded.
     </Note>
   </Step>
   <Step title="Open the dashboard">
-    Once the daemons are running, open your browser to:
+    With the services running, open your browser to:
 
     ```
-    http://localhost:3000
+    http://localhost:3939
     ```
 
-    The dashboard shows a real-time timeline of your app sessions, coloured by activity category, with a daily breakdown chart and session detail views. New sessions appear every 60 seconds as the daemon processes the latest screenpipe frames.
+    The dashboard shows a real-time timeline of your app sessions coloured by activity category, a daily breakdown chart, and your draft worklogs. New sessions appear every 60 seconds as the daemon processes the latest screenpipe frames.
+
+    <Tip>
+      Change the port by setting `MERIDIAN_UI_PORT` in `~/.meridian/app/.env`, then `meridian restart`.
+    </Tip>
   </Step>
 </Steps>
 
 ## Useful commands after starting
 
-Once Meridian is running, the following commands are the ones you'll reach for most often:
+Once Meridian is running, these are the commands you'll reach for most often:
 
 ```bash
-# Tail the daemon log (last 100 lines)
-meridian logs
-
-# Stream the daemon log live
+# Watch the daemon pipeline live
 meridian logs -f
 
 # Tail a specific service log
 meridian logs daemon-error
-meridian logs jira-updater
-meridian logs screenpipe
-meridian logs screenpipe-error
-meridian logs ui
-meridian logs ui-error
 meridian logs mlx-server
-meridian logs coding-agent-indexer
+meridian logs screenpipe
+meridian logs ui
 
-# Run environment health checks
+# Today's worklog drafts (done / pending / per-ticket comments)
+meridian worklog-status
+
+# Diagnose missing config, services, or permissions
 meridian doctor
 
-# Stop all daemons
+# Stop / restart everything
 meridian stop
-
-# Restart all daemons
 meridian restart
+
+# Update to the latest release
+meridian update
 ```
 
-`meridian doctor` checks that all plists are installed and valid, that screenpipe is running and has a database, that your Python virtualenv is set up, that the MCP server is built, and that the dashboard has been compiled. Run it any time something looks wrong.
+`meridian doctor` checks that all launchd plists are installed, screenpipe is running and has a database, the MLX server is reachable, and the dashboard has been built. Run it any time something looks wrong.
+
+<Note>
+  **Nothing posts to your tracker automatically.** The daemon only *drafts* worklogs; you review and approve each one in the dashboard's **Worklogs** view, and the daemon posts approved worklogs within ~60s. Approval is the only gate.
+</Note>
 
 ## Troubleshooting
 
-<Accordion title="meridian status shows a daemon as 'not running'">
-  Run `meridian doctor` to identify the specific failure. Common causes are a missing `~/.meridian/.env` file (run `./install.sh` to create it), or a missing screenpipe database (start screenpipe first, then run `meridian start`).
+<Accordion title="`npm install -g` fails with EACCES">
+  Your npm global prefix is root-owned — typical with the stock macOS Node install at `/usr/local`. The bootstrap one-liner at the top of this page fixes this automatically by redirecting the prefix to `~/.npm-global` and patching your shell profile. Run it instead of `npm install -g` directly:
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/Meridiona/meridian/main/scripts/bootstrap.sh | bash
+  ```
+
+  Never run npm with `sudo` — that creates root-owned files in your home and breaks future installs.
 </Accordion>
 
-<Accordion title="The dashboard at localhost:3000 isn't loading">
-  Check the UI log: `meridian logs ui`. If the build is missing, the installer may have been run with `--no-ui`. Rebuild by running `cd ui && npm ci && npm run build`, then restart with `meridian restart`.
+<Accordion title="meridian status shows a service as 'not running'">
+  Run `meridian doctor` to identify the specific failure. The most common causes are a missing config file (re-run `meridian setup`), screenpipe permissions not yet granted (`meridian permissions`), or a Gatekeeper block on the unsigned binary — see the warning at the top of step 1.
 </Accordion>
 
-<Accordion title="Sessions are appearing but no tickets are being updated">
-  Confirm your PM credentials are set: `meridian config edit`. Ensure `CLASSIFICATION_ENABLED=true` and that the MLX server is running (`meridian logs mlx-server`). Run `meridian doctor` to verify the jira-updater is installed and check `meridian logs jira-updater` for any API errors.
+<Accordion title="macOS blocks the binary on first launch">
+  Unsigned v1 builds are quarantined by Gatekeeper. Clear the attribute and restart:
+
+  ```bash
+  xattr -dr com.apple.quarantine ~/.meridian/app
+  meridian restart
+  ```
 </Accordion>
+
+<Accordion title="The dashboard at localhost:3939 isn't loading">
+  Give it ~15 seconds after `meridian start` for the Next.js server to boot, then check `meridian logs ui-error -n 50`. If the port is in use, set `MERIDIAN_UI_PORT` in `~/.meridian/app/.env` and `meridian restart`.
+</Accordion>
+
+<Accordion title="Sessions appear but no worklogs are being drafted">
+  Confirm your tracker credentials with `meridian config edit`, that `CLASSIFICATION_ENABLED=true`, and that the MLX server is up (`meridian logs mlx-server -f` should show `MLX model ready`). Inspect the day's drafts with `meridian worklog-status`.
+</Accordion>
+
+## Build from source (contributors only)
+
+If you're contributing to Meridian itself rather than just using it, clone the repository and run the source installer instead of the bootstrap one-liner. This builds the daemon and dashboard from source and registers the same launchd services:
+
+```bash
+git clone https://github.com/Meridiona/meridian
+cd meridian
+./install.sh
+```
+
+The source path is intended for development — use `meridian dev` to rebuild and restart after edits. Everyone else should stick with the bootstrap install above.

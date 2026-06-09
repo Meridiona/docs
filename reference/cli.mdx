@@ -1,14 +1,45 @@
 ---
 title: "Meridian CLI Reference: Commands, Flags, and Usage"
 sidebarTitle: "CLI Reference"
-description: "Complete reference for every meridian CLI command and install.sh flag, including start, stop, logs, doctor, config, permissions, and uninstall."
+description: "Complete reference for every meridian CLI command — setup, start, stop, logs, doctor, config, permissions, update, and uninstall — plus the install.sh flags for source builds."
 ---
 
-The `meridian` CLI is a bash script that wraps macOS launchd, letting you manage all Meridian daemons without touching `launchctl` directly. After installation, the script is symlinked into `/usr/local/bin/meridian` (or `~/.local/bin/meridian`) so you can call it from any directory.
+The `meridian` CLI is a bash script that wraps macOS launchd, letting you manage all Meridian services without touching `launchctl` directly. When you install via npm (`npm install -g @meridiona/meridian`), the CLI is placed on your `PATH` automatically. Source-built contributors get the same binary symlinked into `/usr/local/bin/meridian` (or `~/.local/bin/meridian`) by `./install.sh`.
 
 ---
 
 ## Commands
+
+<Accordion title="meridian setup">
+
+```bash
+meridian setup
+```
+
+The one-time installer run after `npm install -g @meridiona/meridian`. Copies the prebuilt app bundle to `~/.meridian/app`, installs any missing prerequisites (Homebrew packages, Python 3.11, ffmpeg, screenpipe), prepares the on-device model environment, and registers four launchd agents that start automatically:
+
+- `com.meridiona.screenpipe` — capture
+- `com.meridiona.daemon` — pipeline (ETL, classification, worklog drafting)
+- `com.meridiona.mlx-server` — on-device model
+- `com.meridiona.ui` — dashboard at http://localhost:3939
+
+After setup completes, `meridian setup` walks you through the macOS permissions panes (Screen Recording, Accessibility). Run it again at any time to re-register services or top up missing prerequisites; it's idempotent.
+
+<Note>
+Source-built contributors run `./install.sh` from the repo root instead. The on-disk layout under `~/.meridian/` is the same.
+</Note>
+
+</Accordion>
+
+<Accordion title="meridian update">
+
+```bash
+meridian update
+```
+
+Pulls the latest release of `@meridiona/meridian` from npm and re-runs `meridian setup` so the registered launchd agents pick up the new binary. Your config in `~/.meridian/app/.env` and database at `~/.meridian/meridian.db` are preserved.
+
+</Accordion>
 
 <Accordion title="meridian start">
 
@@ -22,12 +53,10 @@ Enables and bootstraps every Meridian LaunchAgent, then prints a live status sum
 |---|---|
 | `com.meridiona.screenpipe` | screenpipe ambient recorder |
 | `com.meridiona.daemon` | Meridian Rust ETL daemon |
-| `com.meridiona.jira-updater` | Jira / GitHub / Linear sync |
-| `com.meridiona.ui` | Next.js dashboard at http://localhost:3000 |
 | `com.meridiona.mlx-server` | MLX inference server |
-| `com.meridiona.coding-agent-indexer` | Coding-agent context indexer |
+| `com.meridiona.ui` | Next.js dashboard at http://localhost:3939 |
 
-If any `.plist` file is missing, `meridian start` prints an error for that service and exits with a non-zero code. Run `./install.sh` to reinstall missing plists.
+If any `.plist` file is missing, `meridian start` prints an error for that service and exits with a non-zero code. Re-run `meridian setup` (or `./install.sh` for source builds) to reinstall missing plists.
 
 <Note>
 The Rust daemon TCP-connects to the MLX server at startup to verify it is reachable. If the MLX server is not running, the daemon exits immediately. Start all services together with `meridian start` rather than launching them individually.
@@ -43,7 +72,7 @@ meridian stop
 
 Disables and boots out every LaunchAgent, then kills any orphaned `mlx_lm.server` processes that launchd does not track. The `.plist` files in `~/Library/LaunchAgents/` are left in place so `meridian start` can bring everything back up.
 
-Use this command before editing `~/.meridian/.env` so the daemon picks up the new values on the next `meridian start`.
+Use this command before editing `~/.meridian/app/.env` so the daemon picks up the new values on the next `meridian start`.
 
 </Accordion>
 
@@ -66,8 +95,8 @@ meridian status
 Queries launchd for the running state of every registered service and prints a colour-coded summary:
 
 - **✓ running (pid N)** — service is up and has a PID
-- **⊘ loaded but not running** — launchd has the plist but the process is not active (e.g. the jira-updater between scheduled slots)
-- **✗ not installed** — plist is missing; run `./install.sh`
+- **⊘ loaded but not running** — launchd has the plist but the process is not active (e.g. a service paused between scheduled slots)
+- **✗ not installed** — plist is missing; run `meridian setup` (or `./install.sh` for source builds)
 
 Run `meridian status` any time you are unsure whether the stack is up.
 
@@ -87,13 +116,12 @@ Tails a log file from `~/.meridian/logs/`. All arguments are optional.
 |---|---|
 | `daemon` *(default)* | `~/.meridian/logs/daemon.log` |
 | `daemon-error` | `~/.meridian/logs/daemon-error.log` |
-| `jira-updater` | `~/.meridian/logs/jira-updater.log` |
+| `mlx-server` | `~/.meridian/logs/mlx-server.log` |
+| `mlx-server-error` | `~/.meridian/logs/mlx-server-error.log` |
 | `screenpipe` | `~/.meridian/logs/screenpipe.log` |
 | `screenpipe-error` | `~/.meridian/logs/screenpipe-error.log` |
 | `ui` | `~/.meridian/logs/ui.log` |
 | `ui-error` | `~/.meridian/logs/ui-error.log` |
-| `mlx-server` | `~/.meridian/logs/mlx-server.log` |
-| `coding-agent-indexer` | `~/.meridian/logs/coding-agent-indexer.log` |
 
 **Flags**
 
@@ -125,17 +153,17 @@ meridian doctor
 
 Runs a full suite of environment health checks and prints a pass/fail result for each one. Checks include:
 
-- macOS detected
-- `meridian-daemon` binary exists and is executable
-- Service `.plist` files are installed and pass `plutil -lint` (daemon, jira-updater, screenpipe, UI)
+- macOS on Apple Silicon detected
+- `meridian` and `meridian-daemon` binaries exist and are executable
+- Service `.plist` files are installed and pass `plutil -lint` (daemon, mlx-server, screenpipe, UI)
 - Daemon process is running
-- `~/.meridian/.env` configuration file exists
+- `~/.meridian/app/.env` configuration file exists
 - screenpipe binary is in `$PATH`
 - screenpipe database exists at `~/.screenpipe/db.sqlite`
 - screenpipe process is running
-- Python venv is set up and `run_agent` is importable
-- MCP server has been built (`packages/meridian-mcp/dist/index.js` exists)
-- Next.js UI has been built (`ui/.next` directory exists)
+- Python environment is set up for the MLX server
+- MLX server is reachable on `127.0.0.1:$MLX_SERVER_PORT`
+- Next.js UI has been built and the dashboard responds on `http://localhost:$MERIDIAN_UI_PORT`
 
 At the end, `doctor` prints a count of failed checks. A clean run looks like:
 
@@ -153,7 +181,7 @@ Run `meridian doctor` as the first diagnostic step whenever something seems wron
 meridian config edit
 ```
 
-Opens `~/.meridian/.env` in your `$EDITOR` (falls back to `nano` if `$EDITOR` is not set). This is the canonical way to update API keys, change the poll interval, or toggle classification without hunting for the file path.
+Opens `~/.meridian/app/.env` in your `$EDITOR` (falls back to `nano` if `$EDITOR` is not set). This is the canonical way to update API keys, change the poll interval, or toggle classification without hunting for the file path. On source-built installs, the same command opens the repo-root `.env`.
 
 After saving, run `meridian restart` so the daemon picks up the new values.
 
@@ -173,13 +201,12 @@ EDITOR=code meridian config edit
 meridian permissions
 ```
 
-Walks you interactively through the three macOS privacy panes that screenpipe requires:
+Walks you interactively through the two macOS privacy panes that screenpipe requires:
 
 1. **Screen Recording** — opens the System Settings pane; click `+`, navigate to the screenpipe binary, add it, and toggle it on.
 2. **Accessibility** — same steps.
-3. **Microphone** — screenpipe appears here only after it first requests mic access. Grant Screen Recording first if screenpipe is not listed yet.
 
-After each step the script waits for you to press Enter. Run `meridian restart` afterwards so screenpipe picks up the newly granted permissions.
+After each step the script waits for you to press Enter. Run `meridian restart` afterwards so screenpipe picks up the newly granted permissions. Audio capture is disabled by default, so no Microphone permission is required.
 
 <Warning>
 Without Screen Recording permission, screenpipe cannot capture frames and Meridian will have no data to process.
@@ -193,7 +220,7 @@ Without Screen Recording permission, screenpipe cannot capture frames and Meridi
 meridian uninstall
 ```
 
-Prompts for confirmation, then stops all daemons, runs each service's uninstall script, kills orphaned `mlx_lm.server` processes, and removes the `meridian` and `meridian-daemon` symlinks from `/usr/local/bin/` and `~/.local/bin/`.
+Prompts for confirmation, then stops all daemons, runs each service's uninstall script, kills orphaned `mlx_lm.server` processes, and removes the `meridian` and `meridian-daemon` shims. After uninstall, you can also `npm uninstall -g @meridiona/meridian` to remove the CLI package itself.
 
 Your data at `~/.meridian/` is **not** removed. Delete it manually if you want to wipe everything:
 
@@ -205,9 +232,9 @@ rm -rf ~/.meridian
 
 ---
 
-## install.sh Flags
+## install.sh Flags (source builds)
 
-The installer (`./install.sh`) accepts flags that let you customise or automate the setup process.
+Most users install from npm with `npm install -g @meridiona/meridian && meridian setup` and never touch `install.sh`. The source installer is only relevant if you cloned the repo to contribute to Meridian itself. It accepts the following flags to customise or automate the setup process.
 
 <CardGroup cols={2}>
   <Card title="--no-ui" icon="window-minimize">
