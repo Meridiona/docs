@@ -47,6 +47,10 @@ This guide walks you through getting Meridian running on your machine for the fi
     <Note>
       For each pane, click the **+** button in System Settings, navigate to the screenpipe binary, and toggle it on. Audio capture is disabled by default (screenpipe runs with `--disable-audio`), so no Microphone permission is required.
     </Note>
+
+    <Note>
+      **Add `meridian-a11y-helper` to Accessibility too.** Meridian installs a small helper agent (`com.meridiona.a11y-helper`) that needs its own Accessibility grant so Chromium- and Electron-based apps (Slack, Claude Desktop, VS Code, Cursor, Codex, …) become visible to screenpipe. The installer opens the Accessibility pane a second time for this binary — add it the same way you added screenpipe. Without it, those apps' activity is silently misattributed to whichever native app was focused beforehand.
+    </Note>
   </Step>
   <Step title="Configure your credentials">
     Immediately after the build, the installer prompts you for credentials grouped by service. Press **Enter** on any prompt to skip that variable — you can always add it later.
@@ -79,7 +83,7 @@ This guide walks you through getting Meridian running on your machine for the fi
     meridian status
     ```
 
-    You should see all services — `com.meridiona.screenpipe`, `com.meridiona.daemon`, `com.meridiona.jira-updater`, `com.meridiona.ui`, `com.meridiona.mlx-server`, and `com.meridiona.coding-agent-indexer` — reported as running with their process IDs.
+    You should see all services — `com.meridiona.screenpipe`, `com.meridiona.daemon`, `com.meridiona.jira-updater`, `com.meridiona.ui`, `com.meridiona.mlx-server`, `com.meridiona.a11y-helper`, and `com.meridiona.coding-agent-indexer` — reported as running with their process IDs.
 
     <Note>
       **MLX inference server for task classification.** If you installed with `--mlx`, Meridian uses a persistent MLX inference server (Qwen3.5-9B, running on-device via Metal) for session-to-ticket classification. On first start, the model downloads to your local cache (~6.6 GB) — this can take a few minutes depending on your connection speed. Subsequent starts load from cache in around 5 seconds. Watch the server come up with `meridian logs mlx-server`. If you haven't set up the MLX server, set `CLASSIFICATION_ENABLED=false` in `~/.meridian/.env` to run in activity-tracking mode without ticket classification.
