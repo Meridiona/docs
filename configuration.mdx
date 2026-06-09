@@ -70,13 +70,12 @@ All three credential variables are required to enable the Jira connector. `JIRA_
 
 ### GitHub
 
-Both credential variables are required to enable the GitHub connector. `GITHUB_REPOS` is optional — omitting it covers all repositories in your org.
+`GITHUB_TOKEN` enables the GitHub connector; `GITHUB_PROJECT_IDS` picks which Projects (v2) boards Meridian reads. Run `meridian setup` to obtain the token from the `gh` CLI and choose projects interactively.
 
 | Variable | Default | Description |
 |---|---|---|
-| `GITHUB_TOKEN` | _(none)_ | A GitHub personal access token with `repo` scope. |
-| `GITHUB_ORG` | _(none)_ | Your GitHub organisation name. |
-| `GITHUB_REPOS` | _(all org repos)_ | Comma-separated list of `org/repo` slugs to scope issue lookups, e.g. `your-org/api,your-org/web`. Leave empty to search all org repos. |
+| `GITHUB_TOKEN` | _(none)_ | A GitHub OAuth token (from `gh auth token`) or a classic PAT with the `repo`, `read:org`, and `read:project` scopes. |
+| `GITHUB_PROJECT_IDS` | _(none — no sync)_ | Comma-separated GitHub Projects v2 node IDs (each starts with `PVT_`), e.g. `PVT_kwHOAB123,PVT_kwHOCD456`. |
 
 ### Linear
 

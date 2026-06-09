@@ -10,35 +10,82 @@ Meridian supports two additional issue trackers alongside Jira: GitHub Issues an
   <Tab title="GitHub Issues">
     ## What Meridian does with GitHub Issues
 
-    Meridian fetches open issues from your GitHub organisation's repositories using the GitHub REST API. Each issue is stored in `pm_tasks` alongside any Jira or Linear issues you've configured. When Meridian classifies a coding session — say, an hour in VS Code on a feature branch — it matches that work against your open issues and writes a `ticket_links` row with the best-matching issue key.
+    Meridian reads the GitHub Projects (v2) you select and ingests the open issues assigned to you in each one via the GraphQL API. Each issue is stored in `pm_tasks` alongside any Jira or Linear tasks you've configured, with its Project **Status** field (Todo / In Progress / Done) mapped to Meridian's `status_category` so it shows in the correct dashboard column. When Meridian classifies a coding session — say, an hour in VS Code on a feature branch — it matches that work against these tasks and writes a `ticket_links` row with the best-matching issue key.
+
+    Use this connector if you track work in GitHub Projects (boards) rather than only on Issues alone. You pick which projects to sync at install time, so personal projects, org projects, or both can be combined.
 
     ## Prerequisites
 
-    - A GitHub account with access to your organisation's repositories
-    - A personal access token (PAT) with at least the `repo` scope
+    - A GitHub account with access to at least one Project (v2) containing issues assigned to you
+    - Either the [`gh` CLI](https://cli.github.com/) installed and authenticated (recommended), **or** a personal access token (PAT) with the `repo`, `read:org`, and `read:project` scopes
 
-    ## Create a GitHub personal access token
+    ## Get a token
 
-    <Steps>
-      <Step title="Open GitHub Settings">
-        Click your avatar in the top-right corner of GitHub, then choose **Settings**.
-      </Step>
-      <Step title="Navigate to Developer settings">
-        Scroll to the bottom of the left sidebar and click **Developer settings**.
-      </Step>
-      <Step title="Generate a new token">
-        Select **Personal access tokens → Fine-grained tokens** (recommended) or **Tokens (classic)**. Click **Generate new token**.
+    The easiest path is to let `meridian setup` reuse the `gh` CLI's existing browser login — no PAT to manage. Fall back to a PAT only if you can't install `gh`.
 
-        For a classic token, enable the **repo** scope. For a fine-grained token, grant **Read-only** access to **Issues** and **Repository metadata** for the repositories Meridian should monitor.
-      </Step>
-      <Step title="Copy the token">
-        Copy the token value before navigating away — GitHub only shows it once.
-      </Step>
-    </Steps>
+    <Tabs>
+      <Tab title="With gh CLI (recommended)">
+        <Steps>
+          <Step title="Install and authenticate gh">
+            Install the [GitHub CLI](https://cli.github.com/) and run:
+
+            ```bash
+            gh auth login
+            ```
+          </Step>
+          <Step title="Run meridian setup">
+            ```bash
+            meridian setup
+            ```
+
+            When the installer reaches the GitHub step it will:
+
+            1. Detect your `gh` login and, if needed, open the browser to grant the extra `read:project` scope.
+            2. Call `gh auth token` and write the result to `GITHUB_TOKEN` in `~/.meridian/.env`.
+            3. List your personal and organisation Projects and prompt you to pick which ones to sync. The selected node IDs are saved to `GITHUB_PROJECT_IDS`.
+
+            No PAT is ever created.
+          </Step>
+        </Steps>
+      </Tab>
+      <Tab title="With a personal access token">
+        <Steps>
+          <Step title="Generate a classic token">
+            Go to [github.com/settings/tokens/new](https://github.com/settings/tokens/new) and create a **classic** personal access token.
+          </Step>
+          <Step title="Enable the required scopes">
+            Meridian needs three scopes:
+
+            - **`repo`** — post worklog and task-update comments on issues
+            - **`read:org`** — list the organisations you belong to
+            - **`read:project`** — read the Projects v2 boards and their items
+          </Step>
+          <Step title="Copy the token">
+            Copy the token value before navigating away — GitHub only shows it once.
+          </Step>
+          <Step title="Find your Project node IDs">
+            Each Project v2 has a node ID like `PVT_kwHO...`. List yours with:
+
+            ```bash
+            gh api graphql -f query='{
+              viewer {
+                projectsV2(first: 10) { nodes { id title } }
+                organizations(first: 10) {
+                  nodes { login projectsV2(first: 10) { nodes { id title } } }
+                }
+              }
+            }'
+            ```
+
+            Or open the project in GitHub and copy the ID from the URL via the API explorer.
+          </Step>
+        </Steps>
+      </Tab>
+    </Tabs>
 
     ## Set environment variables
 
-    Open the Meridian env file:
+    If you ran `meridian setup` with `gh` available, `GITHUB_TOKEN` and `GITHUB_PROJECT_IDS` are already written for you. To configure them manually, open the env file:
 
     ```bash
     meridian config edit
@@ -50,13 +97,10 @@ Meridian supports two additional issue trackers alongside Jira: GitHub Issues an
     # ~/.meridian/.env
 
     GITHUB_TOKEN=ghp_your_personal_access_token
-    GITHUB_ORG=your-org-name
-
-    # Optional: limit to specific repos (comma-separated owner/repo pairs)
-    # GITHUB_REPOS=your-org/api,your-org/web
+    GITHUB_PROJECT_IDS=PVT_xxx,PVT_yyy
     ```
 
-    If `GITHUB_REPOS` is omitted, Meridian fetches open issues from all repositories in the organisation that your token can access.
+    `GITHUB_PROJECT_IDS` is a comma-separated list of Projects v2 node IDs. If it is empty, no GitHub tasks are synced — Meridian needs an explicit project list (there is no longer an "all repos in an org" mode).
 
     ## Apply and verify
 
@@ -75,32 +119,37 @@ Meridian supports two additional issue trackers alongside Jira: GitHub Issues an
       <Step title="Confirm issues were fetched">
         ```bash
         sqlite3 ~/.meridian/meridian.db \
-          "SELECT task_key, title FROM pm_tasks WHERE provider='github' LIMIT 10;"
+          "SELECT task_key, title, status_category FROM pm_tasks WHERE provider='github' LIMIT 10;"
         ```
+
+        The `status_category` column reflects each issue's Project Status field — `todo`, `in_progress`, or `done`.
       </Step>
     </Steps>
 
-    ## Filter to specific repositories
+    ## Pick different projects later
 
-    Set `GITHUB_REPOS` to a comma-separated list of `owner/repo` strings:
+    Re-run `meridian setup` to bring the project picker back up, or edit `GITHUB_PROJECT_IDS` directly:
 
     ```bash
-    GITHUB_REPOS=myorg/api,myorg/web,myorg/infra
+    GITHUB_PROJECT_IDS=PVT_kwHOAB123,PVT_kwHOCD456
     ```
 
-    Only open issues from those repositories will be pulled into `pm_tasks`. This is useful when your organisation has many repositories but you only actively work in a subset.
+    Only issues that appear on those project boards and are assigned to you are pulled into `pm_tasks`. This is the supported way to scope which repositories' work Meridian sees.
 
     ## Troubleshooting
 
     <AccordionGroup>
       <Accordion title="401 or 403 errors on startup">
-        Check that your token has not expired and has the correct scopes. Classic tokens need the `repo` scope; fine-grained tokens need read access to Issues. Regenerate the token in GitHub Settings if needed.
+        Check that your token has not expired and has all three scopes: `repo`, `read:org`, `read:project`. If you're using a `gh` CLI token, re-run `gh auth refresh -h github.com -s read:project` to add the projects scope. PATs can be regenerated at [github.com/settings/tokens](https://github.com/settings/tokens).
       </Accordion>
       <Accordion title="pm_tasks is empty for GitHub">
-        Confirm that `GITHUB_ORG` matches your organisation's login name exactly (case-sensitive). If `GITHUB_REPOS` is set, verify each entry uses the full `owner/repo` format. Your token must have access to at least one repository in the org.
+        Confirm that at least one entry in `GITHUB_PROJECT_IDS` is a valid Projects v2 node ID (they start with `PVT_`) and that the project contains issues assigned to your account. Re-run `meridian setup` to use the interactive picker, or list available IDs with the `gh api graphql` query shown above.
       </Accordion>
       <Accordion title="meridian doctor shows github: not configured">
-        Both `GITHUB_TOKEN` and `GITHUB_ORG` are required. Run `meridian config edit` and confirm neither is commented out.
+        `GITHUB_TOKEN` is the only strictly required variable, but without `GITHUB_PROJECT_IDS` no tasks will sync. Run `meridian config edit` and confirm both are present and uncommented.
+      </Accordion>
+      <Accordion title="Issues show up in the wrong dashboard column">
+        Meridian maps the Project's **Status** field to `status_category`. Make sure each issue has a Status set on the board — items with no Status default to `todo`. The exact option names (`Todo`, `In Progress`, `Done`) are matched case-insensitively.
       </Accordion>
     </AccordionGroup>
   </Tab>
