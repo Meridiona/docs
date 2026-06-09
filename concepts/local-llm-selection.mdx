@@ -1,0 +1,132 @@
+---
+title: "Local LLM Model Selection: How Meridian Picks an On-Device Classifier"
+sidebarTitle: "Local LLM Selection"
+description: "Understand how the MLX server picks a classification model at startup based on your Mac's memory, when it routes to Apple Intelligence on 8 GB machines, and how to pin a specific model with MLX_MODEL_ID."
+---
+
+The MLX inference server that powers [task classification](/concepts/task-classification) no longer runs a single hardcoded model. At startup it inspects your machine and chooses the best on-device backend for the available Metal memory budget — picking the eval-tuned Qwen3.5-9B model on capable Macs, an Apple Intelligence backend on 8 GB Macs running macOS 26+, or a smaller cached model in between.
+
+This page covers what gets selected on which hardware, how Apple Intelligence is wired into every MLX server endpoint on 8 GB Macs, what `/info` and `/v1/models` report after the choice is made, and how to override the selection with `MLX_MODEL_ID`.
+
+## Why dynamic selection
+
+A single hardcoded classifier model (Qwen3.5-9B at ~6.5 GB on disk and roughly 6 GB resident) runs comfortably on a 16 GB Apple Silicon Mac but immediately OOMs an 8 GB M1/M2 Air. The previous behaviour also meant that any Mac without that exact model already in the HuggingFace cache would block on a multi-GB download the first time the MLX server started.
+
+Dynamic selection solves both problems:
+
+- It prefers the eval-tuned model whenever the machine can run it.
+- It degrades to the largest cached model that fits the Metal headroom, instead of silently downloading a new one.
+- On 8 GB Macs running macOS 26+, it routes classification to **Apple Intelligence** so no MLX model is loaded at all.
+
+The classifier never triggers a surprise download as a side effect of normal degradation; only the explicit low-RAM right-sizing path (see below) or an `MLX_MODEL_ID` pin can cause one.
+
+## What gets selected on which Mac
+
+The selector evaluates rules in order on every MLX server startup:
+
+<Steps>
+  <Step title="Preferred eval-tuned model">
+    If the preferred model (Qwen3.5-9B-OptiQ-4bit) fits the thermal-capped Metal headroom budget, it is used. This is the path on 16 GB+ Apple Silicon Macs and is the same model the project's evals are tuned against.
+  </Step>
+  <Step title="Largest cached model that fits">
+    Otherwise, the selector walks the catalog from largest to smallest and picks the first MLX model that **both** fits the budget **and** is already in the HuggingFace cache. This keeps "dynamic" meaning "best among what's already present" — never a surprise multi-GB download or an offline startup failure.
+  </Step>
+  <Step title="Apple Intelligence fallback (macOS 26+)">
+    If no cached MLX model fits the budget — the typical state of a fresh install on an 8 GB M1/M2 Air — and Apple Intelligence is genuinely available on the machine, the selector returns the `apple-intelligence` sentinel. Classification then runs through `apple_fm_sdk.LanguageModelSession` instead of loading an MLX model. The expensive in-process MLX model pre-load at server startup is skipped on this path.
+  </Step>
+  <Step title="Largest catalog model that fits (low-RAM right-size)">
+    If nothing cached fits and Apple Intelligence is not available, the selector falls back to the largest catalog model whose declared minimum RAM fits the budget — even if it isn't cached yet, which triggers a one-time download. This protects low-RAM Macs (e.g. an 8 GB M1 Air without macOS 26) from loading the oversized preferred model and OOMing; previously the server would always try the 6.5 GB preferred model in this case.
+  </Step>
+</Steps>
+
+Only when no catalog entry fits the budget at all does the server fall back to a best-effort load of the preferred model. This preserves behaviour on edge configurations while keeping the common low-RAM path safe.
+
+<Note>
+Apple Intelligence selection is gated on **actual availability**, not just the macOS version. The selector checks, in order: macOS ≥ 26, `apple_fm_sdk` importable in the services venv, and `SystemLanguageModel().is_available()` reporting ready. Any failure causes graceful fall-through to MLX or the low-RAM right-size path.
+</Note>
+
+### Apple Intelligence requirements
+
+For the Apple Intelligence backend to be picked on an 8 GB Mac, all of the following must be true:
+
+- **macOS 26 or later.** The Foundation Models API ships only on macOS 26+.
+- **Apple Intelligence enabled** in System Settings, with the on-device model downloaded. The selector calls `SystemLanguageModel().is_available()` and only proceeds if it returns ready.
+- **`apple-fm-sdk` installed** in the services venv. Releases built on macOS 26+ CI ship `apple-fm-sdk` pre-compiled inside the bundled services venv tarball, so end users never need Xcode at runtime. On macOS 26+, the installer also enforces a Python 3.11 venv when extracting the prebuilt tarball — auto-downloading Python 3.11 via `uv python install 3.11` if it is not already present — because the bundled compiled extensions (`pydantic_core`, `mlx`, `apple_fm_sdk`) are built for 3.11.
+- **Xcode** is required only to *build* the `apple-fm-sdk` wheel from source. End users installing from the prebuilt npm bundle receive a precompiled wheel and never need Xcode at runtime. Building from source (`uv sync`) on macOS 26+ will pip-install `apple-fm-sdk` directly, which requires Xcode to compile.
+
+If any of these is missing, the selector falls through to the MLX path. If you expected Apple Intelligence to be picked but the server loaded an MLX model instead, the MLX server log will record why the probe failed.
+
+<Tip>
+Every release built on macOS 26+ ships the services venv tarball — including `apple-fm-sdk` — regardless of whether Python dependencies changed in that release. This guarantees Apple Intelligence keeps working across releases that only touch installer scripts, the Rust daemon, or the UI.
+</Tip>
+
+## Apple Intelligence routing across MLX server endpoints
+
+When `apple-intelligence` is the resolved backend, every MLX server endpoint that takes a prompt is routed through `apple_fm_sdk.LanguageModelSession` instead of loading an MLX model:
+
+| Endpoint | Apple FM behaviour |
+|---|---|
+| `/classify` and `/classify_sessions` | Uses a compact ~500-token system prompt (the full SKILL.md prompt is reserved for MLX models because it exceeds Apple FM's 4096-token combined context window on its own). User content is capped at ~8,000 characters (~2,000 tokens). Responses are coerced through a defaults pass so missing fields don't fail Pydantic validation, and `task_key` is forced to `null` when `session_type` is not `"task"`. |
+| `/v1/chat/completions` | Calls Apple FM directly. User content is capped at 12,000 characters (~3,072 prompt tokens) to leave ~1,024 tokens for the response. |
+| `/summarise` | Calls Apple FM directly with free-form JSON output (Apple FM does not support outlines/FSM-constrained decoding). A single retry strips markdown fences if the first response is wrapped in a code block. User content is capped at 12,000 characters. |
+
+The Apple FM context window is **4,096 tokens combined** for input and output, which is why the system prompts and user-content caps above are tighter than the MLX path.
+
+<Note>
+Apple FM calls run on a dedicated OS thread with a fresh asyncio event loop so they work correctly from both async FastAPI handlers and CLI invocations. You don't need to do anything to enable this — it's transparent to callers.
+</Note>
+
+## What `/info` and `/v1/models` report
+
+After the selector runs, the MLX server reports the resolved identifier on both inspection endpoints so evals and downstream tooling stay truthful about which backend actually answered:
+
+- **`GET /info`** — returns the resolved model id, including `apple-intelligence` when the Apple FM backend is active.
+- **`GET /v1/models`** — lists the resolved model id in the OpenAI-compatible models payload, so any OpenAI-style client that introspects available models sees the real backend.
+
+```bash
+# After the MLX server has started, see which model was picked
+curl -s http://127.0.0.1:7823/info
+
+# 16 GB+ Mac, fresh install:
+# { "model": "mlx-community/Qwen3.5-9B-OptiQ-4bit", ... }
+
+# 8 GB M1 Air on macOS 26 with Apple Intelligence enabled:
+# { "model": "apple-intelligence", ... }
+```
+
+Classification results also carry a `method` tag — `mlx_direct` when an MLX model answered and `apple_fm` when Apple Intelligence answered — so you can tell from the `ticket_links` rows which backend produced any given link.
+
+## Pinning a specific model with `MLX_MODEL_ID`
+
+For eval reproducibility, or to force a specific model regardless of headroom, set `MLX_MODEL_ID` in `~/.meridian/.env`. An explicit pin bypasses dynamic selection entirely:
+
+```bash
+# ~/.meridian/.env
+MLX_MODEL_ID=mlx-community/Qwen3.5-9B-OptiQ-4bit
+```
+
+Resolution order on every MLX server startup:
+
+1. `MLX_MODEL_ID` (explicit pin) — used as-is, no probe, no budget check.
+2. Dynamic selection — the rules described above.
+3. Hardcoded default — only if both of the above are absent.
+
+<Warning>
+A pin to a model larger than your Metal budget will OOM at first inference. A pin to a model that is not already in the HuggingFace cache will trigger a download on first start. Use the pin for eval reproducibility on machines you know fit the model, not as a workaround for an unrelated startup failure.
+</Warning>
+
+After changing `MLX_MODEL_ID`, restart the stack so the MLX server re-resolves the id:
+
+```bash
+meridian restart
+```
+
+Confirm the pin took effect by re-checking `/info`:
+
+```bash
+curl -s http://127.0.0.1:7823/info
+```
+
+## When to leave selection alone
+
+The default — no `MLX_MODEL_ID` set — is the right choice for almost every install. It picks the eval-tuned model on capable Macs, degrades safely to cached alternatives on machines under memory pressure, right-sizes to a fitting catalog model on low-RAM Macs without Apple Intelligence, and routes 8 GB Macs on macOS 26+ to Apple Intelligence so they can classify without downloading a 6 GB model. Set `MLX_MODEL_ID` only when you need to reproduce a specific eval run or you are deliberately benchmarking an alternative model on hardware that fits it.

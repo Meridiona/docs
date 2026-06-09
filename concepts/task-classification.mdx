@@ -45,7 +45,7 @@ Classification and sync run on the same 60-second polling loop as the ETL runner
 
 ## The MLX inference server
 
-Task classification runs entirely on your machine using a persistent MLX inference server powered by the **Qwen3.5-9B** model. The server loads the model into memory once at startup (roughly 30 seconds on first run while the model downloads; about 5 seconds from cache on subsequent starts) and then handles classification requests from the Meridian daemon over a local HTTP connection on port 7823.
+Task classification runs entirely on your machine using a persistent MLX inference server. The server picks a classifier backend at startup based on your Mac's available Metal memory — the eval-tuned **Qwen3.5-9B** model on 16 GB+ Apple Silicon Macs, a smaller cached model when headroom is tight, or **Apple Intelligence** on 8 GB Macs running macOS 26+ — and then handles classification requests from the Meridian daemon over a local HTTP connection on port 7823. See [Local LLM Selection](/concepts/local-llm-selection) for the full selection rules and how to pin a specific model.
 
 <Steps>
   <Step title="Start the MLX server">
