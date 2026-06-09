@@ -25,6 +25,7 @@ Enables and bootstraps every Meridian LaunchAgent, then prints a live status sum
 | `com.meridiona.jira-updater` | Jira / GitHub / Linear sync |
 | `com.meridiona.ui` | Next.js dashboard at http://localhost:3939 (override via `MERIDIAN_UI_PORT`) |
 | `com.meridiona.mlx-server` | MLX inference server |
+| `com.meridiona.a11y-helper` | Accessibility helper that makes Chromium/Electron apps visible to screenpipe |
 | `com.meridiona.coding-agent-indexer` | Coding-agent context indexer |
 
 If any `.plist` file is missing, `meridian start` prints an error for that service and exits with a non-zero code. Run `./install.sh` to reinstall missing plists.
@@ -133,6 +134,8 @@ Runs a full suite of environment health checks and prints a pass/fail result for
 - screenpipe binary is in `$PATH`
 - screenpipe database exists at `~/.screenpipe/db.sqlite`
 - screenpipe process is running
+- screenpipe capture coverage — flags apps that appear in focus events but produce no frames (the signature of an unenabled Electron app)
+- `meridian-a11y-helper` is running and has been granted Accessibility (required for Chromium/Electron apps to surface their accessibility tree)
 - Python venv is set up and `run_agent` is importable
 - MCP server has been built (`packages/meridian-mcp/dist/index.js` exists)
 - Next.js UI has been built (`ui/.next` directory exists)
@@ -173,12 +176,13 @@ EDITOR=code meridian config edit
 meridian permissions
 ```
 
-Walks you interactively through the two macOS privacy panes that screenpipe requires:
+Walks you interactively through the macOS privacy panes Meridian requires:
 
-1. **Screen Recording** — opens the System Settings pane; click `+`, navigate to the screenpipe binary, add it, and toggle it on.
-2. **Accessibility** — same steps.
+1. **Screen Recording** (screenpipe) — opens the System Settings pane; click `+`, navigate to the screenpipe binary, add it, and toggle it on.
+2. **Accessibility** (screenpipe) — same steps for the screenpipe binary.
+3. **Accessibility** (meridian-a11y-helper) — the pane re-opens for the bundled `meridian-a11y-helper` binary. Add it the same way so Chromium/Electron apps (Slack, Claude Desktop, VS Code, Cursor, …) become visible to screenpipe.
 
-After each step the script waits for you to press Enter. Run `meridian restart` afterwards so screenpipe picks up the newly granted permissions.
+After each step the script waits for you to press Enter. Run `meridian restart` afterwards so screenpipe and the helper pick up the newly granted permissions.
 
 <Note>
   Audio capture is disabled (screenpipe runs with `--disable-audio`), so no Microphone permission is required.
