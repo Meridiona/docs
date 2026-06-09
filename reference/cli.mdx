@@ -173,13 +173,23 @@ EDITOR=code meridian config edit
 meridian permissions
 ```
 
-Walks you interactively through the three macOS privacy panes that screenpipe requires:
+Walks you interactively through the three macOS privacy panes that screenpipe requires. The command first prints the stable binary path you need to grant access to:
 
-1. **Screen Recording** — opens the System Settings pane; click `+`, navigate to the screenpipe binary, add it, and toggle it on.
+```
+~/.meridian/bin/screenpipe
+```
+
+Then it opens each pane in sequence:
+
+1. **Screen Recording** — opens the System Settings pane; click `+`, press `⌘⇧G`, paste the path above, click **Open**, and toggle the entry on.
 2. **Accessibility** — same steps.
 3. **Microphone** — screenpipe appears here only after it first requests mic access. Grant Screen Recording first if screenpipe is not listed yet.
 
 After each step the script waits for you to press Enter. Run `meridian restart` afterwards so screenpipe picks up the newly granted permissions.
+
+<Note>
+Updates preserve whatever screenpipe path your existing launchd plist points at so the macOS TCC grant stays valid. The `~/.meridian/bin/screenpipe` path is used for fresh installs and when no plist exists yet.
+</Note>
 
 <Warning>
 Without Screen Recording permission, screenpipe cannot capture frames and Meridian will have no data to process.

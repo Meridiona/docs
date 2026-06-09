@@ -277,7 +277,13 @@ Run the guided permissions walkthrough:
 meridian permissions
 ```
 
-The command opens the Screen Recording, Accessibility, and Microphone System Settings panes in sequence and waits for you to confirm each one. After granting access, restart the stack:
+The command prints the stable binary path you need to grant access to and opens the Screen Recording, Accessibility, and Microphone System Settings panes in sequence. Grant access to:
+
+```
+~/.meridian/bin/screenpipe
+```
+
+In each pane, click **+**, press **⌘⇧G**, paste that path, click **Open**, and toggle the entry on. After granting access, restart the stack:
 
 ```bash
 meridian restart
@@ -286,6 +292,10 @@ meridian restart
 <Warning>
 You must restart screenpipe after granting Screen Recording permission. The permission change does not take effect for a running process.
 </Warning>
+
+<Note>
+Updates never rewrite the screenpipe path in your launchd plist — if you previously granted access against an older path (for example an `nvm`-versioned npm path), the existing TCC grant is preserved. Only fresh installs land at `~/.meridian/bin/screenpipe`.
+</Note>
 
 </Accordion>
 

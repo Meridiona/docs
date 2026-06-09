@@ -1,0 +1,102 @@
+---
+title: "Use the Meridian Menu Bar Tray App"
+sidebarTitle: "Menu bar"
+description: "Check daemon health, see your top app for the day, and trigger a worklog draft from the macOS menu bar — without opening the dashboard."
+---
+
+Meridian ships with a lightweight macOS menu bar tray app that lives in your system tray and gives you an at-a-glance view of whether the background daemons are healthy and what you've been working on today. It's designed for the times you don't want to context-switch to the full dashboard — a quick glance at the menu bar is enough to confirm Meridian is recording and to spot when something has stopped working.
+
+<Note>
+The tray app is **macOS only**. The Linux and Windows builds of Meridian do not include it.
+</Note>
+
+## What the tray shows
+
+The tray icon reflects daemon health in real time. Open the popover to see:
+
+- **Daemon status** — whether the Rust ETL daemon is running, derived from the `daemon_running` field on `/api/health` (a launchd probe with a 3-second timeout).
+- **Accessibility helper status** — whether the a11y helper is currently trusted by macOS. An untrusted helper means window titles aren't being captured.
+- **Today's top app** — the app you've spent the most focused time in so far today, with elapsed time.
+- **Pending worklog drafts** — a count of drafts waiting on your review.
+
+From the popover you can also:
+
+- Open the full dashboard at `http://localhost:3000`.
+- Trigger a worklog draft for today without leaving the menu bar.
+- Pause or resume the daemon.
+
+The tray polls `/api/health` and the activity endpoints every 60 seconds. When the daemon goes down — or comes back online — you get a macOS notification so you don't silently lose recording time.
+
+## Installation and auto-start
+
+The tray app is installed automatically by `./install.sh` and `meridian update`. It's registered as a LaunchAgent (`com.meridiona.tray`) so it starts on login alongside the rest of the stack — there's no separate command to run.
+
+You can verify it's loaded with:
+
+```bash
+launchctl list | grep com.meridiona.tray
+```
+
+If you want to start, stop, or restart the tray independently of the other daemons:
+
+```bash
+# Stop the tray
+launchctl stop com.meridiona.tray
+
+# Start it again
+launchctl start com.meridiona.tray
+```
+
+Logs are written to `~/.meridian/logs/tray.log` and `~/.meridian/logs/tray-error.log`.
+
+## When to use it
+
+Reach for the tray when you want to:
+
+- Confirm Meridian is still recording without breaking flow to open a browser.
+- Get notified the moment the daemon stops (for example after a system update or permission revocation).
+- Kick off a worklog draft quickly at the end of the day or after a focused session.
+
+For deeper analysis — timelines, per-session detail, the apps view — open the dashboard. The tray is intentionally minimal.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="The tray icon doesn't appear in the menu bar">
+    Check that the LaunchAgent is registered and running:
+
+    ```bash
+    launchctl list | grep com.meridiona.tray
+    ```
+
+    If it's missing, re-run the installer or reinstall just the tray daemon:
+
+    ```bash
+    bash scripts/install-tray-daemon.sh
+    ```
+
+    Then tail the log to confirm it started:
+
+    ```bash
+    tail -f ~/.meridian/logs/tray.log
+    ```
+  </Accordion>
+  <Accordion title="The popover shows 'daemon stopped' but meridian status looks fine">
+    The tray reads `daemon_running` from `/api/health`, which probes launchd for `com.meridiona.daemon`. If the UI service is down or unreachable on `http://localhost:3000`, the tray can't fetch health and falls back to a stopped state. Confirm the UI is up:
+
+    ```bash
+    meridian status
+    curl -s http://localhost:3000/api/health
+    ```
+
+    Restart the stack with `meridian restart` if the UI service isn't running.
+  </Accordion>
+  <Accordion title="Health status isn't refreshing">
+    The tray polls every 60 seconds. If the popover shows stale numbers for longer than that, check the tray log for errors and confirm the dashboard is reachable:
+
+    ```bash
+    tail -f ~/.meridian/logs/tray.log
+    curl -s http://localhost:3000/api/health | jq
+    ```
+  </Accordion>
+</AccordionGroup>
