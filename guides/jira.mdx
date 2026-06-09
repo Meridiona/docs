@@ -1,79 +1,132 @@
 ---
 title: "Connect Meridian to Jira Cloud for Automatic Tracking"
 sidebarTitle: "Jira"
-description: "Link your Jira Cloud workspace to Meridian so sessions are classified against your open tickets and time is tracked without manual input."
+description: "Link your Jira Cloud workspace to Meridian with a one-command browser login (OAuth + PKCE), or fall back to a static API token. Sessions are classified against your open tickets and time is tracked without manual input."
 ---
 
-Meridian fetches your open Jira tickets, stores them locally as `pm_tasks`, and uses them during session classification. Every time you close a coding or research session, Meridian's classifier checks which ticket that work most likely belongs to and writes a `ticket_links` row to its database — no timesheets, no manual updates required. All you need is a Jira API token and three environment variables.
+Meridian fetches your open Jira tickets, stores them locally as `pm_tasks`, and uses them during session classification. Every time you close a coding or research session, Meridian's classifier checks which ticket that work most likely belongs to and writes a `ticket_links` row to its database — no timesheets, no manual updates required.
+
+Meridian supports two ways to authenticate to Jira Cloud:
+
+- **Browser OAuth (recommended)** — one command, no API token, your site is discovered automatically, and access tokens auto-refresh.
+- **Static API token (fallback)** — three environment variables. Use this when your Atlassian org blocks third-party OAuth apps or you need a fully scripted, headless setup.
+
+If both are configured, OAuth wins.
 
 ## Prerequisites
 
 - A Jira Cloud account (Jira Data Center is not supported)
-- An API token from your Atlassian account
 - Meridian installed and the daemon running (`meridian status` to confirm)
+- For OAuth: a desktop browser on the machine running Meridian
 
-## Get a Jira API token
+## Connect with browser OAuth (recommended)
 
-<Steps>
-  <Step title="Open Atlassian account settings">
-    Navigate to [id.atlassian.com](https://id.atlassian.com) and sign in, then click your avatar in the top-right corner and choose **Manage account**.
-  </Step>
-  <Step title="Open the Security tab">
-    Select the **Security** tab in the left sidebar.
-  </Step>
-  <Step title="Create a new token">
-    Scroll to **API tokens** and click **Create and manage API tokens → Create API token**. Give it a descriptive label such as `meridian-local` and click **Create**.
-  </Step>
-  <Step title="Copy the token">
-    Copy the token value immediately — Atlassian will not show it again. Paste it somewhere temporary before moving to the next step.
-  </Step>
-</Steps>
-
-## Configure Meridian
-
-Set the following environment variables. The cleanest way is to open the Meridian env file directly:
+The installer offers OAuth inline during `meridian setup` / `./install.sh`. You can also run the login at any time after install:
 
 ```bash
-meridian config edit
+meridian oauth-login jira
 ```
 
-This opens `~/.meridian/.env` in your `$EDITOR`. Add or update the Jira block:
+The command:
+
+1. Generates a PKCE verifier and opens your default browser to Atlassian's consent screen.
+2. Waits for you to click **Accept**. Atlassian redirects back to a short-lived loopback server at `http://127.0.0.1:9123/callback`.
+3. Exchanges the authorization code for an access token and a refresh token.
+4. Writes them to `~/.meridian/oauth/jira.json` (mode `0600`, owner-only readable).
+
+After the browser shows "Login successful, you can close this tab", restart the daemon so it picks up the new credentials:
+
+```bash
+meridian restart
+```
+
+That's it — your site is discovered automatically from the account you sign in with. There is nothing to add to `~/.meridian/.env`.
+
+### Scopes requested
+
+The Atlassian consent screen lists the four scopes Meridian asks for:
+
+| Scope | Why Meridian needs it |
+|---|---|
+| `read:jira-work` | Read open issues you're assigned to. |
+| `write:jira-work` | Post worklogs to issues you classify against (only after you approve a draft in the dashboard). |
+| `read:jira-user` | Used by `meridian doctor`'s `/myself` health probe to confirm the token works. |
+| `offline_access` | Issues a refresh token so the daemon can mint new access tokens in the background — without this, you'd be re-prompted every hour. |
+
+Meridian never creates, modifies, closes, or deletes tickets on its own. The only write call is a draft worklog you have explicitly approved in the dashboard.
+
+### The token store
+
+Tokens live at `~/.meridian/oauth/jira.json`:
+
+```text
+~/.meridian/oauth/jira.json   # mode 0600, owner read/write only
+```
+
+The file is created with restrictive permissions up front. The daemon refreshes the access token before each request when it's near expiry and persists the rotated refresh token back to the same file — Atlassian rotates refresh tokens on every refresh, so the store must be writable by the daemon.
+
+To revoke access, either delete the token store and run `meridian restart`, or revoke the grant from your Atlassian account's connected apps page. The next daemon start will fall back to static API-token auth if it is configured, otherwise it will report `jira: not configured`.
+
+### Override the OAuth client ID
+
+Meridian ships with a public Atlassian client ID baked in — PKCE has no client secret, so there is nothing to protect. If your organisation runs its own Atlassian app (for example, to scope OAuth to an internal site allowlist), override the baked-in value:
 
 ```bash
 # ~/.meridian/.env
-
-JIRA_BASE_URL=https://your-org.atlassian.net
-JIRA_EMAIL=you@your-org.com
-JIRA_API_TOKEN=your-api-token-here
-
-# Optional: restrict sync to specific project keys (comma-separated)
-# JIRA_PROJECT_KEYS=KAN,ENG
+JIRA_OAUTH_CLIENT_ID=your-atlassian-app-client-id
 ```
 
-<Note>
-  Meridian only reads your Jira tickets for classification. It never creates, modifies, closes, or deletes tickets on your behalf.
-</Note>
+Then re-run `meridian oauth-login jira`.
 
-Alternatively, re-run the installer's credential walkthrough to be prompted interactively:
+## Connect with a static API token (fallback)
 
-```bash
-./install.sh --skip-permissions
-```
-
-## Apply and verify
+Use this path if `meridian oauth-login jira` fails with an org-approval error ("site admin must authorize this app" or user app installs disabled), or when running Meridian in a headless environment where you cannot open a browser.
 
 <Steps>
+  <Step title="Create a Jira API token">
+    Navigate to [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens), click **Create API token**, give it a descriptive label such as `meridian-local`, and copy the value. Atlassian only shows the token once.
+  </Step>
+  <Step title="Add the credentials to ~/.meridian/.env">
+    Run `meridian config edit` and add the Jira block:
+
+    ```bash
+    # ~/.meridian/.env
+
+    JIRA_BASE_URL=https://your-org.atlassian.net
+    JIRA_EMAIL=you@your-org.com
+    JIRA_API_TOKEN=your-api-token-here
+
+    # Optional: restrict sync to specific project keys (comma-separated)
+    # JIRA_PROJECT_KEYS=KAN,ENG
+    ```
+  </Step>
   <Step title="Restart the daemon">
     ```bash
     meridian restart
     ```
-    The daemon re-reads `~/.meridian/.env` on startup and refreshes the `pm_tasks` cache from Jira within the first poll cycle.
   </Step>
+</Steps>
+
+All three variables must be present for the basic-auth path to activate. Static-token requests go directly to your `JIRA_BASE_URL`; OAuth requests instead go through `https://api.atlassian.com/ex/jira/{cloudId}` with a Bearer token. Both paths share the same request layer, so the rest of Meridian — classification, doctor, worklog drafts — works identically.
+
+## How Meridian picks an auth path
+
+On every Jira request, the daemon resolves credentials in this order:
+
+1. If `~/.meridian/oauth/jira.json` exists, use OAuth. Refresh the access token first if it's near expiry.
+2. Otherwise, if `JIRA_BASE_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` are all set, use basic auth.
+3. Otherwise, report `jira: not configured` and skip Jira sync.
+
+This means an OAuth-connected installation can also keep static creds in `.env` as a documented fallback — they will simply be ignored as long as the token store exists.
+
+## Verify the connection
+
+<Steps>
   <Step title="Run a health check">
     ```bash
     meridian doctor
     ```
-    Look for `jira: connected` in the output. A green status confirms Meridian can reach your Jira instance and has fetched at least one ticket.
+    Look for `jira: connected` in the output. The check calls Jira's `/myself` endpoint, which works under both OAuth (via the `read:jira-user` scope) and basic auth.
   </Step>
   <Step title="Inspect the task cache (optional)">
     ```bash
@@ -92,38 +145,29 @@ By default Meridian fetches every open ticket assigned to you. To restrict it to
 JIRA_PROJECT_KEYS=KAN,ENG
 ```
 
-Only issues whose key prefix matches one of the listed values will be pulled into `pm_tasks`. This speeds up the initial cache load and keeps the classifier focused on relevant work.
+`JIRA_PROJECT_KEYS` applies to both auth paths.
 
 ## Force-refresh the Jira task cache
 
-The daemon refreshes `pm_tasks` automatically at startup. If you've just closed a sprint, reassigned tickets, or simply want to pull the latest data without restarting the daemon, run:
+The daemon refreshes `pm_tasks` automatically at startup and on its background poll cycle. To pull the latest data on demand without restarting, run:
 
 ```bash
-python3 scripts/refresh_pm_tasks.py
+meridian tasks-sync
 ```
 
-You can also pass a custom JQL expression or point it at a different database:
-
-```bash
-# Custom JQL
-python3 scripts/refresh_pm_tasks.py --jql "project=KAN ORDER BY updated DESC"
-
-# Custom DB path
-python3 scripts/refresh_pm_tasks.py --db /path/to/meridian.db
-
-# Combine both
-python3 scripts/refresh_pm_tasks.py \
-  --jql "project=ENG AND sprint in openSprints()" \
-  --db ~/.meridian/meridian.db
-```
-
-The script reads your credentials from `~/.meridian/.env` automatically — no extra configuration needed.
+This bypasses the 5-minute staleness gate and re-syncs every configured tracker (Jira, GitHub, Linear) in one shot.
 
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="401 Unauthorized when Meridian starts">
-    A 401 error means the credentials are incorrect. Double-check that:
+  <Accordion title="meridian oauth-login jira fails with an org-approval error">
+    Some Atlassian organisations require a site admin to authorize third-party OAuth apps before any user can grant consent. If you see "site admin must authorize this app" or "user app installs are disabled", switch to the [static API token path](#connect-with-a-static-api-token-fallback) — basic auth works without org-level approval.
+  </Accordion>
+  <Accordion title="login() fails with 'no refresh token returned'">
+    Atlassian only issues a refresh token when the `offline_access` scope is granted. If the consent screen omits it, the daemon refuses the response so you don't end up with a token that silently expires after an hour. Re-run `meridian oauth-login jira` and make sure all four scopes are listed on the consent screen.
+  </Accordion>
+  <Accordion title="401 Unauthorized after basic-auth setup">
+    Double-check that:
 
     - `JIRA_EMAIL` matches the email address on your Atlassian account exactly.
     - `JIRA_API_TOKEN` is the token value itself, not a label or partial string.
@@ -136,11 +180,15 @@ The script reads your credentials from `~/.meridian/.env` automatically — no e
 
     - Your account has at least one open issue assigned to it in the targeted projects.
     - If you set `JIRA_PROJECT_KEYS`, confirm the keys are correct (they are case-sensitive, e.g. `KAN` not `kan`).
-    - The issue type is `Task` or `Feature` — the default JQL filters on those types.
 
-    Run `python3 scripts/refresh_pm_tasks.py --jql "project=KAN ORDER BY updated DESC"` to test with broader criteria.
+    Run `meridian tasks-sync` to force a re-sync after fixing the configuration.
   </Accordion>
   <Accordion title="meridian doctor reports jira: not configured">
-    All three Jira variables (`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`) must be set. Run `meridian config edit` and confirm none of them are commented out or missing.
+    Jira is considered configured when either:
+
+    - The OAuth token store exists at `~/.meridian/oauth/jira.json`, OR
+    - All three of `JIRA_BASE_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` are set in `~/.meridian/.env`.
+
+    Run `ls -l ~/.meridian/oauth/jira.json` to check for the token store, or `meridian config edit` to confirm the static creds.
   </Accordion>
 </AccordionGroup>

@@ -147,6 +147,39 @@ Run `meridian doctor` as the first diagnostic step whenever something seems wron
 
 </Accordion>
 
+<Accordion title="meridian oauth-login jira">
+
+```bash
+meridian oauth-login jira
+```
+
+Connects Meridian to Jira Cloud using browser-based OAuth (Authorization Code + PKCE). Opens your default browser to Atlassian's consent screen, waits for you to click **Accept**, then writes the resulting access + refresh tokens to `~/.meridian/oauth/jira.json` (mode `0600`).
+
+The Atlassian app requests these scopes:
+
+- `read:jira-work` — read open issues assigned to you
+- `write:jira-work` — post worklogs you've approved in the dashboard
+- `read:jira-user` — used by `meridian doctor` to confirm the token works
+- `offline_access` — required so the daemon can refresh access tokens in the background
+
+Your Jira site is discovered automatically from the account you sign in with; no environment variables are required. After the browser shows "Login successful", run `meridian restart` so the daemon picks up the new credentials.
+
+See the [Jira guide](/guides/jira) for the full walkthrough, including the API-token fallback when an Atlassian org blocks third-party OAuth apps.
+
+</Accordion>
+
+<Accordion title="meridian tasks-sync">
+
+```bash
+meridian tasks-sync
+```
+
+Forces an on-demand re-sync of every configured PM tracker (Jira, GitHub, Linear), bypassing the daemon's 5-minute staleness gate. Useful after closing a sprint, reassigning tickets, or connecting a new tracker.
+
+The same action is available from the dashboard's Tasks view via the **Sync** button.
+
+</Accordion>
+
 <Accordion title="meridian config edit">
 
 ```bash
