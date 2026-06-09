@@ -41,6 +41,10 @@ The `app_sessions` table in `~/.meridian/meridian.db` holds one row per complete
   `audio_snippets` are stored in `meridian.db` but intentionally excluded from all MCP tool responses. This keeps LLM context clean and reduces noise when AI tools query your session data. Audio content is still searchable via the `search-sessions` MCP tool.
 </Note>
 
+## Coding-agent sessions
+
+Claude Code, Codex, GitHub Copilot, and Cursor sessions are ingested as rows in this same `app_sessions` table, alongside screen-based sessions. They carry a few extra fields — `claude_session_uuid`, `session_text_source`, `session_summary`, `summary_source`, `task_method` — that drive the agent-specific pipeline (segmentation, on-device summarisation, classification, and the supervised-vs-autonomous split). See [Coding Agents](/concepts/coding-agents) for the full schema and lifecycle.
+
 ## Where sessions live
 
 Meridian writes all completed sessions to its own SQLite database at `~/.meridian/meridian.db`. This file is separate from screenpipe's database and is owned entirely by Meridian. The `min_frame_id` and `max_frame_id` fields on each session let you trace back to the original screenpipe frames if you need them.

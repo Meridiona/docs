@@ -32,6 +32,7 @@
             "pages": [
               "concepts/how-it-works",
               "concepts/sessions",
+              "concepts/coding-agents",
               "concepts/categories",
               "concepts/task-classification"
             ]

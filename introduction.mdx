@@ -24,6 +24,8 @@ Each session captures the app you were using, how long you used it, the window t
 
 **Task classification and PM sync** — Meridian's classification layer reads OCR text, window titles, URLs, git branch names, and terminal context to determine which specific ticket each session belongs to. Once linked, the Jira updater, GitHub connector, and Linear connector push updates automatically — no manual input required.
 
+**Coding-agent ingest** — Sessions from Claude Code, Codex, GitHub Copilot (CLI and VS Code Chat), and Cursor (sidebar and `cursor-agent` CLI) are captured as first-class app sessions via a `SessionEnd` hook plus an in-daemon multi-source indexer and summariser. Each agent transcript is segmented, summarised on-device by the matching engine, classified to a ticket, and split into supervised (alongside your hands-on work) and autonomous (while you were away) time. See [Coding Agents](/concepts/coding-agents).
+
 **MCP server** — Meridian ships a TypeScript MCP server that exposes your structured session data to any MCP-compatible AI tool, including Claude Code, Claude Desktop, and Cursor. Query your activity history in plain language, ask for summaries, or feed live context into your AI assistant.
 
 **Local dashboard** — A Next.js UI at `http://localhost:3000` gives you a real-time timeline of your sessions, daily category breakdowns, and session detail views. It reads directly from the local database and requires no account or login.

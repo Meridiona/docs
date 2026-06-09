@@ -1,0 +1,207 @@
+---
+title: "Coding Agents: Capturing Claude Code, Codex, Copilot, and Cursor Sessions"
+sidebarTitle: "Coding Agents"
+description: "Learn how Meridian ingests coding-agent transcripts from Claude Code, Codex, GitHub Copilot, and Cursor as first-class sessions, how supervised and autonomous agent time is measured, and how agent work flows into ticket classification and worklog drafts."
+---
+
+Meridian treats coding-agent sessions as first-class activity, alongside the screen-based sessions captured by screenpipe. Each agent's conversation store on disk is segmented into rows in the same `app_sessions` table, summarised on-device, classified against your tickets, and folded into the same per-task totals you see on the dashboard. The result is that "an agent shipped this while you were at lunch" is visible, attributed to a ticket, and quoted in your worklog draft — without you doing anything.
+
+## When this applies
+
+This pipeline is dormant unless a supported coding agent is present on the machine. Meridian probes for each agent's on-disk store and CLI at daemon startup. If none of those exist, the indexer and summariser stay idle and log "dormant" — installing Meridian on a machine without any of these agents has no effect until you add one.
+
+## Supported agents
+
+Meridian ingests conversations from the following agents, each through a dedicated source adapter that normalises its native on-disk format into the same internal record shape. Everything downstream of the adapter — segmentation, sealing, summarising, classification — is agent-blind.
+
+| Agent | `app_name` written | Source store | Captured how |
+|---|---|---|---|
+| **Claude Code** | `Claude Code` | `~/.claude/projects/<project>/<uuid>.jsonl` | `SessionEnd` hook (zero-latency) + daemon fallback poll |
+| **Codex** | `Codex` | `~/.codex/sessions/<uuid>.jsonl` | Daemon fallback poll |
+| **GitHub Copilot CLI** | `GitHub Copilot` | `~/.copilot/session-state/<uuid>/events.jsonl` | Daemon source-adapter sweep |
+| **GitHub Copilot Chat (VS Code)** | `GitHub Copilot` | VS Code workspace and global chat session op-logs | Daemon source-adapter sweep |
+| **Cursor (IDE sidebar agent)** | `Cursor Agent` | `state.vscdb` (`cursorDiskKV` table) | Daemon source-adapter sweep |
+| **Cursor Agent CLI** (`cursor-agent`) | `Cursor Agent` | `~/.cursor/chats/<workspace>/<chat-uuid>/store.db` | Daemon source-adapter sweep |
+| **Antigravity** | — | (detection-only stub) | Logged once at startup; awaiting a pinned store format |
+
+The shape of each row in `app_sessions` is the same across every agent. You can filter to coding-agent rows with `claude_session_uuid IS NOT NULL` (the column name is historical — it carries the session UUID for every agent, not just Claude).
+
+## What gets captured
+
+Each session becomes one or more **segments**, where each segment is a row in `app_sessions` with the following distinguishing fields:
+
+| Field | Value for a coding-agent row |
+|---|---|
+| `app_name` | `Claude Code`, `Codex`, `GitHub Copilot`, `Cursor Agent`, or `Antigravity Agent`. |
+| `claude_session_uuid` | The agent session UUID — the idempotency key, alongside `segment_started_at`. |
+| `session_text_source` | Which store the transcript came from (e.g. `claude_jsonl`, `copilot_events_jsonl`, `cursor_vscdb`, `cursor_cli_store`). |
+| `started_at` / `ended_at` | First and last turn timestamp in the segment, ISO 8601 UTC. |
+| `frame_count` | Number of turns in the segment (not screenpipe frames). |
+| `session_text` | The transcript body — user prompts and assistant turns. |
+| `window_titles` | The agent's own session name when it has one (Cursor `composerData.name`, Copilot Chat `customTitle`, Claude Code `summary`, cursor-agent meta `name`). Rendered exactly like screen-capture window titles. |
+| `session_summary` | Factual prose summary written by the summariser. |
+| `summary_source` | `claude`, `codex`, `copilot`, `cursor_agent`, or `mlx` (which engine produced the summary). |
+| `task_method` | Pipeline state — see [The lifecycle](#the-lifecycle) below. |
+| `task_key` | The ticket the segment was classified to, once classified. |
+
+Coding-agent rows live in the same table as screen sessions, so every existing query, every MCP tool, and the dashboard timeline all see them automatically. See [Sessions](/concepts/sessions) for the rest of the schema.
+
+### Session names
+
+Most agents name their sessions — automatically after the first exchange, or via a custom title the user sets — and Meridian writes that name into `window_titles` using the canonical `[{"window_name": "...", "count": 1}]` shape. The dashboard session list and the classifier read coding-agent rows exactly like screen-capture rows as a result. Agents that do not name their sessions (Codex, Copilot CLI) store an empty `window_titles` array; placeholders like Cursor's `New Agent` are filtered out.
+
+A name that appears *after* the first exchange (Cursor names a chat once a reply arrives) refreshes the live row; sealed rows stay immutable.
+
+### Segmenting a long transcript
+
+A single transcript can run for hours, so Meridian splits it into segments using two rules:
+
+- An **idle gap longer than one hour** between turns opens a new segment.
+- A **one-hour time-box** caps each segment, but the cut only happens at the next real user prompt — so a segment always ends on a complete assistant turn and the next one opens on a user message.
+
+The `(claude_session_uuid, segment_started_at)` pair is the unique key. Re-running the indexer on the same store produces the same rows; there is no `DELETE`-then-`INSERT`.
+
+## The SessionEnd hook
+
+Claude Code supports a `SessionEnd` hook that fires the instant a session closes. Meridian's installer registers one entry into `~/.claude/settings.json` that invokes the `meridian coding-agent-hook` subcommand with the transcript path on stdin. The hook seals exactly one session, exits in under 100 ms, and always returns `0` — a misbehaving hook can never block Claude.
+
+The installer **merges** into your existing `settings.json`. Other hooks you have configured are left untouched, and re-running the installer is idempotent: the existing Meridian entry is replaced, nothing else is touched.
+
+```bash
+# Install or refresh the SessionEnd hook
+./services/scripts/install-claude-hook.sh
+
+# Remove only Meridian's entry, leaving other hooks intact
+./services/scripts/uninstall-claude-hook.sh
+```
+
+`./install.sh` runs this for you on a fresh setup. The other agents (Codex, Copilot, Cursor) have no equivalent hook, so their sessions are caught by the daemon's source-adapter sweep on the next indexer tick.
+
+<Note>
+  The hook is the 99% happy path for Claude Code. The in-daemon indexer is the backstop for everything else — it seals settled rows that the hook missed (Claude crashes, force-quit, machine sleep), polls the other agents' stores, and re-parses changed conversations to refresh the live tail of any in-flight session.
+</Note>
+
+## The lifecycle
+
+Each coding-agent row walks one column — `task_method` — through its life. You can query the column directly to see where a session is in the pipeline.
+
+```text
+coding_agent_live ──seal──▶ pending_summariser ──summarise──▶ pending_classifier ──classify──▶ mlx_direct
+```
+
+| `task_method` | Meaning |
+|---|---|
+| `coding_agent_live` | Segment is still growing. Re-upserted on every indexer tick. |
+| `pending_summariser` | Segment is sealed (`sealed_at` is set) and immutable. Queued for the summariser. |
+| `pending_classifier` | Summary is written. Queued for the classifier. |
+| `mlx_direct` | Classified on its summary, `task_key` is set. Terminal. |
+| `subprocess_error` | Row failed the summariser three times (e.g. transcript exceeds every engine's context window). Dead-lettered and permanently skipped — no further work or LLM calls are spent on it. |
+
+## Per-agent summarisation
+
+The summariser routes each session to the engine that knows the agent best, with the on-device MLX server as the shared fallback when every primary engine fails or is rate-limited:
+
+| Session source | Primary engine | Fallback |
+|---|---|---|
+| Claude Code | `claude -p /session-summary` (your Claude subscription) | MLX `/summarise` |
+| Codex | `codex exec` | MLX `/summarise` |
+| GitHub Copilot (CLI or VS Code) | `copilot -p` | MLX `/summarise` |
+| Cursor (sidebar or CLI) | `cursor-agent -p` | MLX `/summarise` |
+| Anything else | `claude -p` | MLX `/summarise` |
+
+All engines target the same schema, so downstream consumers cannot tell which engine produced a given summary except by reading `summary_source`. A primary engine that is rate-limited short-circuits to MLX immediately; if both the primary and MLX are down, the row is left pending and retried on the next sweep.
+
+### The `session-summary` skill
+
+The Claude engine invokes `claude -p /session-summary`, which expects a Claude Code command file at `~/.claude/commands/session-summary.md`. Without it, every Claude Code session silently falls back to MLX — you lose the higher-quality, subscription-priced summary for no visible reason.
+
+Install or repair the skill file with:
+
+```bash
+meridian coding-agent-install-skill
+```
+
+The command is idempotent and safe to re-run. `meridian doctor` checks for the file at startup and warns when it is missing; `meridian doctor --fix` auto-installs it.
+
+## Supervised vs autonomous agent time
+
+A coding-agent session can overlap with your own foreground screen time (you were watching Claude work in another pane) or run entirely while you were away from the keyboard (the agent kept going during lunch). Meridian splits the agent's wall-clock time into two slices so the dashboard can label each one honestly:
+
+- **Supervised agent time** — the intersection of agent intervals with your active foreground presence. This is AI-assisted work *you* were doing.
+- **Autonomous agent time** — the agent intervals that ran while you were *not* present (no foreground session, or a `user_idle` gap). This is the slice that lifts a task above your hands-on hours.
+
+The split is computed from intervals, not summed totals, so overlap is never double-counted. The dashboard renders agent activity as an **overlay band** on top of your presence timeline — never additive to focus time — and per-task totals are shown as `your_time + autonomous_agent_time`, with autonomous time labelled `+ Xm agent while you were away`.
+
+```sql
+-- All coding-agent rows for a ticket today, across every agent
+SELECT
+  app_name,
+  started_at,
+  ended_at,
+  duration_s,
+  summary_source,
+  substr(session_summary, 1, 120) AS summary_preview
+FROM app_sessions
+WHERE task_key = 'KAN-108'
+  AND claude_session_uuid IS NOT NULL
+  AND started_at >= date('now')
+ORDER BY started_at;
+```
+
+## Role in the worklog pipeline
+
+The worklog ledger reads the same `app_sessions` rows but treats coding-agent segments specially:
+
+- An **unsettled** coding-agent row (`task_method` in `coding_agent_live`, `pending_summariser`, or `pending_classifier`) blocks its hour from being drafted, so the worklog never quotes a transcript that hasn't been summarised and classified yet.
+- A **settled** row (`mlx_direct` with a `task_key`) contributes its `session_summary` as evidence to the worklog draft for that ticket.
+- A **dead-lettered** row (`subprocess_error`) is skipped, so a single oversized transcript never blocks the rest of the hour.
+
+This is why the summary is written *before* classification — the classifier reasons over the summary (cheaper, sharper) and the worklog quotes the summary verbatim. A raw 50,000-token transcript is never sent to your PM tool.
+
+## Configuring and operating
+
+Most users do not need to touch the pipeline. If you do:
+
+```bash
+# Install the Claude Code session-summary skill (idempotent)
+meridian coding-agent-install-skill
+
+# Seal one session by hand from a SessionEnd-style payload
+echo '{"transcript_path":"/Users/you/.claude/projects/foo/<uuid>.jsonl"}' \
+  | meridian coding-agent-hook
+
+# Summarise the pending queue for a specific day (manual backfill)
+meridian coding-agent-summarise --day 2026-05-30
+
+# Classify every summarised row that is still pending
+meridian coding-agent-classify
+```
+
+The daemon's automatic summariser drain covers all pending days, with a per-row attempt cap so a transcript that exceeds every engine's context window is dead-lettered after three failures instead of looping forever. Use `--day <YYYY-MM-DD>` against `coding-agent-summarise` to backfill a specific day on demand.
+
+`meridian doctor` reports the state of every supported agent — which CLIs are on `PATH`, which stores exist, whether `cursor-agent` needs `cursor-agent login`, and whether the `session-summary` skill is installed — and `meridian doctor --fix` resolves the auto-fixable findings.
+
+<Tip>
+  Logs for the in-daemon indexer and summariser live alongside the rest of Meridian's logs. Tail them with `meridian logs coding-agent-indexer` and `meridian logs daemon` to watch the pipeline in real time.
+</Tip>
+
+## Privacy
+
+Coding-agent transcripts are read from your own local stores (`~/.claude`, `~/.codex`, `~/.copilot`, `~/.cursor`, and the relevant VS Code storage directories). Summaries are generated either by your local agent CLI (using your existing subscription) or by the on-device MLX server. The transcript itself is never sent to any remote service by Meridian — only the ticket update you have configured (Jira, GitHub, or Linear) leaves your machine, and only after the row has been classified and the worklog ledger decides to draft.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Sessions" icon="table" href="/concepts/sessions">
+    The shared `app_sessions` schema that coding-agent rows live in.
+  </Card>
+  <Card title="Task Classification" icon="link" href="/concepts/task-classification">
+    How sessions — including coding-agent segments — get linked to a Jira, GitHub, or Linear ticket.
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/reference/cli">
+    Full reference for `meridian coding-agent-hook`, `coding-agent-install-skill`, `coding-agent-summarise`, and related subcommands.
+  </Card>
+  <Card title="Dashboard" icon="chart-line" href="/guides/dashboard">
+    Where supervised and autonomous agent time appear on the timeline and per-task views.
+  </Card>
+</CardGroup>
