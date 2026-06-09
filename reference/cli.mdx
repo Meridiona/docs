@@ -193,9 +193,27 @@ Without Screen Recording permission, screenpipe cannot capture frames and Meridi
 meridian uninstall
 ```
 
-Prompts for confirmation, then stops all daemons, runs each service's uninstall script, kills orphaned `mlx_lm.server` processes, and removes the `meridian` and `meridian-daemon` symlinks from `/usr/local/bin/` and `~/.local/bin/`.
+Prompts for confirmation, then performs a full uninstall of everything Meridian installed — while preserving your session data and logs so you can reinstall later without losing history.
 
-Your data at `~/.meridian/` is **not** removed. Delete it manually if you want to wipe everything:
+**Removed:**
+
+- All launchd agents (`ui`, `mlx-server`, `daemon`, `screenpipe`, `tray`, `a11y-helper`)
+- Orphaned `mlx_lm.server` processes
+- CLI symlinks in `/usr/local/bin/` and `~/.local/bin/` (`meridian`, `meridian-daemon`)
+- The app bundle at `~/.meridian/app/` (binaries, Python venv, UI build)
+- Staged binaries under `~/.meridian/bin/` (`meridian`, `meridian-daemon`, `meridian-tray`, `meridian-a11y-helper`, `screenpipe`)
+- The global npm package `@meridiona/meridian`
+- The `meridian` entry from the `SessionEnd` hooks in `~/.claude/settings.json`
+
+**Preserved:**
+
+- `~/.meridian/*.db` — your session database and any other local databases
+- `~/.meridian/logs/` — historical daemon and service logs
+- screenpipe itself — remove separately with `brew uninstall screenpipe` if you no longer need it
+
+Because the database is left in place, re-running `meridian setup` after an uninstall picks up your existing sessions and you can continue where you left off.
+
+If you want to wipe everything including your data, remove the data directory manually after uninstalling:
 
 ```bash
 rm -rf ~/.meridian
