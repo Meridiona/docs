@@ -43,7 +43,7 @@ The `app_sessions` table in `~/.meridian/meridian.db` holds one row per complete
 
 ## Coding-agent sessions
 
-Claude Code and Codex sessions are ingested as rows in this same `app_sessions` table, alongside screen-based sessions. They carry a few extra fields — `claude_session_uuid`, `session_summary`, `summary_source`, `task_method` — that drive the agent-specific pipeline (segmentation, on-device summarisation, classification, and the supervised-vs-autonomous split). See [Coding Agents](/concepts/coding-agents) for the full schema and lifecycle.
+Claude Code, Codex, GitHub Copilot, and Cursor sessions are ingested as rows in this same `app_sessions` table, alongside screen-based sessions. They carry a few extra fields — `claude_session_uuid`, `session_text_source`, `session_summary`, `summary_source`, `task_method` — that drive the agent-specific pipeline (segmentation, on-device summarisation, classification, and the supervised-vs-autonomous split). See [Coding Agents](/concepts/coding-agents) for the full schema and lifecycle.
 
 ## Where sessions live
 
