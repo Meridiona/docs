@@ -152,7 +152,7 @@ Run `meridian doctor` as the first diagnostic step whenever something seems wron
 | `ui` | launchd service up, `.next` built, `/` serves, a referenced `_next/static` asset fetches, serve mode (catches an `output: 'standalone'` build run with `next start`) |
 | `mcp server` | `packages/meridian-mcp/dist/index.js` built |
 | `worklog` | drafts awaiting review, hours stuck unprocessed, approved worklogs failing to post |
-| `coding-agent` | Claude Code and Codex CLI presence, JSONL session directories |
+| `coding-agent` | Claude Code and Codex CLI presence, JSONL session directories, `~/.claude/commands/session-summary.md` skill file (without it, every Claude Code session falls back to MLX) |
 | `observability` | OpenObserve reachability (so telemetry doesn't silently drop) |
 | `config` | cross-process contract — DB path agreement (`MERIDIAN_DB` vs. `MERIDIAN_DB_PATH`), settings-file split-brain, dead env vars like `POLL_INTERVAL_SECS` |
 
@@ -277,6 +277,27 @@ meridian worklog-post-approved
 
 </Accordion>
 
+<Accordion title="meridian coding-agent-install-skill">
+
+```bash
+meridian coding-agent-install-skill
+```
+
+Writes the `session-summary` Claude Code slash-command file to `~/.claude/commands/session-summary.md` so `claude -p /session-summary` resolves to the prompt Meridian uses to summarise coding-agent transcripts for the Jira worklog.
+
+Without this file, `claude -p /session-summary` returns *Unknown command* and the summariser silently falls back to the local MLX model for every Claude Code session — you lose subscription-claude quality on the transcript summaries that feed the worklog. Run this once per machine where Claude Code is installed.
+
+The command is idempotent (safe to re-run) and writes nothing if the file already exists. `meridian doctor` warns when the skill is missing, and `meridian doctor --fix` runs this command for you, so most users never need to invoke it directly.
+
+**Example**
+
+```bash
+# First-time setup for Claude Code summarisation
+meridian coding-agent-install-skill
+```
+
+</Accordion>
+
 <Accordion title="meridian config edit">
 
 ```bash
@@ -314,6 +335,35 @@ After each step the script waits for you to press Enter. Run `meridian restart` 
 <Warning>
 Without Screen Recording permission, screenpipe cannot capture frames and Meridian will have no data to process.
 </Warning>
+
+</Accordion>
+
+<Accordion title="meridian update">
+
+```bash
+meridian update
+```
+
+Updates a source checkout to the latest `main` in one step: `git pull --ff-only`, rebuilds the Rust daemon (`cargo build --release`), rebuilds the Next.js UI (`npm run build`), then restarts every daemon via `meridian restart`. Use it after a release announcement, or any time you want to pull upstream fixes without running each step by hand.
+
+This command only works in a source checkout (the directory contains a `Cargo.toml`). For production installs from npm, upgrade with:
+
+```bash
+npm install -g @meridiona/meridian@latest
+```
+
+If `git pull --ff-only` fails (local commits that haven't been pushed, or a non-fast-forward), `meridian update` exits without rebuilding so you can resolve the conflict yourself; rerun `meridian dev build` and `meridian restart` afterwards.
+
+**Example**
+
+```bash
+# Pull, rebuild, and restart everything in a source checkout
+meridian update
+```
+
+<Tip>
+The command prints the new version on success — either the contents of the `VERSION` file or the short Git SHA if `VERSION` is missing.
+</Tip>
 
 </Accordion>
 
