@@ -33,14 +33,15 @@ Setting `CLASSIFICATION_ENABLED=false` lets you run the full ETL pipeline — in
 
 ## Jira
 
-All three credential variables must be set for the Jira connector to activate. The connector fetches open issues and the classification pipeline links sessions to ticket keys.
+The Jira connector activates when either the OAuth token store at `~/.meridian/oauth/jira.json` exists (created by `meridian oauth-login jira`) **or** all three of `JIRA_BASE_URL`, `JIRA_EMAIL`, and `JIRA_API_TOKEN` are set. OAuth wins when both are present. See the [Jira guide](/guides/jira) for the full setup walkthrough.
 
 | Variable | Default | Description |
 |---|---|---|
-| `JIRA_BASE_URL` | *(none)* | Your Atlassian instance URL, e.g. `https://your-org.atlassian.net`. |
-| `JIRA_EMAIL` | *(none)* | The email address of the Atlassian account whose API token you are using. |
-| `JIRA_API_TOKEN` | *(none)* | A Jira API token. Generate one at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens). |
-| `JIRA_PROJECT_KEYS` | *(all projects)* | Comma-separated list of project keys to sync, e.g. `KAN,ENG`. When empty, all projects the account can access are included. |
+| `JIRA_BASE_URL` | *(none)* | Your Atlassian instance URL, e.g. `https://your-org.atlassian.net`. Required for the static API-token fallback; ignored when OAuth is active. |
+| `JIRA_EMAIL` | *(none)* | The email address of the Atlassian account whose API token you are using. Required for the static API-token fallback. |
+| `JIRA_API_TOKEN` | *(none)* | A Jira API token. Generate one at [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens). Required for the static API-token fallback. |
+| `JIRA_PROJECT_KEYS` | *(all projects)* | Comma-separated list of project keys to sync, e.g. `KAN,ENG`. When empty, all projects the account can access are included. Applies to both auth paths. |
+| `JIRA_OAUTH_CLIENT_ID` | *(baked-in public client)* | Override the Atlassian OAuth client ID Meridian uses for `meridian oauth-login jira`. Meridian ships with a public client baked in (PKCE has no secret), so this is only needed when running your own self-hosted Atlassian app. |
 
 ---
 
