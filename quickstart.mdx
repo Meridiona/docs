@@ -45,9 +45,21 @@ This guide walks you through getting Meridian running on your machine for the fi
     - **Accessibility** — to read window titles and accessibility tree events
     - **Microphone** — to transcribe audio (optional but recommended for meeting context)
 
+    The screenpipe binary lives at a stable, user-visible path so the grants survive Node upgrades and the System Settings file picker can navigate to it without traversing hidden directories:
+
+    ```
+    ~/.meridian/bin/screenpipe
+    ```
+
+    `meridian permissions` prints this path for you. To grant Screen Recording or Accessibility, open the relevant System Settings pane, click **+**, press **⌘⇧G**, paste the path above, click **Open**, and toggle the entry on.
+
     <Note>
-      For Screen Recording and Accessibility, click the **+** button in the System Settings pane, navigate to the screenpipe binary, and toggle it on. The Microphone pane works differently — screenpipe will appear there automatically after it first requests mic access. If it isn't listed yet, grant Screen Recording first, then check back.
+      The Microphone pane works differently — screenpipe appears there automatically after it first requests mic access. If it isn't listed yet, grant Screen Recording first, then check back.
     </Note>
+
+    <Tip>
+      **Upgrading from an older install?** Updates preserve whatever screenpipe path your launchd plist already points at, so your existing TCC grant for Screen Recording and Accessibility stays valid. Fresh installs land at `~/.meridian/bin/screenpipe`.
+    </Tip>
   </Step>
   <Step title="Configure your credentials">
     Immediately after the build, the installer prompts you for credentials grouped by service. Press **Enter** on any prompt to skip that variable — you can always add it later.
