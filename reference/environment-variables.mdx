@@ -46,13 +46,12 @@ All three credential variables must be set for the Jira connector to activate. T
 
 ## GitHub
 
-Both credential variables must be set to enable the GitHub connector. Meridian fetches open issues and pull requests from the specified organisation and links them to sessions alongside Jira tickets.
+`GITHUB_TOKEN` is required to enable the GitHub connector; `GITHUB_PROJECT_IDS` selects which Projects (v2) Meridian reads from. Open issues assigned to you on those boards are pulled into `pm_tasks` via the GraphQL API, with each issue's Project Status field mapped to a `status_category`. Run `meridian setup` to obtain the token through the `gh` CLI and pick projects interactively.
 
 | Variable | Default | Description |
 |---|---|---|
-| `GITHUB_TOKEN` | *(none)* | A GitHub personal access token with at least the `repo` scope. Create one at [github.com/settings/tokens](https://github.com/settings/tokens). |
-| `GITHUB_ORG` | *(none)* | The GitHub organisation name to sync, e.g. `your-org`. |
-| `GITHUB_REPOS` | *(all org repos)* | Comma-separated list of `org/repo` slugs to sync, e.g. `your-org/api,your-org/web`. When empty, all repositories in the organisation are included. |
+| `GITHUB_TOKEN` | *(none)* | A GitHub OAuth token (extracted from `gh auth token` by `meridian setup`) or a classic personal access token with the `repo`, `read:org`, and `read:project` scopes. Create a PAT at [github.com/settings/tokens](https://github.com/settings/tokens). |
+| `GITHUB_PROJECT_IDS` | *(none — no sync)* | Comma-separated GitHub Projects v2 node IDs (each starts with `PVT_`), e.g. `PVT_kwHOAB123,PVT_kwHOCD456`. When empty, no GitHub tasks are synced. List your project IDs with `gh api graphql -f query='{ viewer { projectsV2(first: 10) { nodes { id title } } } }'`. |
 
 ---
 
@@ -98,7 +97,7 @@ JIRA_PROJECT_KEYS=KAN,ENG
 
 # ── GitHub ────────────────────────────────────────────────────────────────────
 GITHUB_TOKEN=ghp_your_personal_access_token
-GITHUB_ORG=your-org
+GITHUB_PROJECT_IDS=PVT_xxx,PVT_yyy
 
 # ── Linear ────────────────────────────────────────────────────────────────────
 LINEAR_API_KEY=lin_api_your_key_here
