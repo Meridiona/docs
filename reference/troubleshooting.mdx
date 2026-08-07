@@ -277,7 +277,7 @@ Run the guided permissions walkthrough:
 meridian permissions
 ```
 
-The command opens the Screen Recording, Accessibility, and Microphone System Settings panes in sequence and waits for you to confirm each one. After granting access, restart the stack:
+The command opens the Screen Recording and Accessibility System Settings panes in sequence (Accessibility runs twice — once for the screenpipe binary, once for `meridian-a11y-helper`) and waits for you to confirm each one. After granting access, restart the stack:
 
 ```bash
 meridian restart
@@ -291,16 +291,36 @@ You must restart screenpipe after granting Screen Recording permission. The perm
 
 <Accordion title="No audio transcription in sessions">
 
-Audio transcription requires the Microphone permission. screenpipe appears in the Microphone pane only after it has first tried to access the microphone — this happens automatically once Screen Recording is granted and screenpipe is running.
+Meridian ships with audio capture disabled — screenpipe is launched with `--disable-audio`, so no Microphone permission is requested and no audio is recorded or transcribed. Existing sessions will have an empty `audio_snippets` array, which is expected.
 
-If screenpipe is not listed in the Microphone pane yet:
+</Accordion>
 
-1. Ensure Screen Recording is already granted.
-2. Start screenpipe: `meridian start`.
-3. Wait a few seconds, then open System Settings → Privacy & Security → Microphone.
-4. Toggle screenpipe on.
+<Accordion title="An Electron app (Slack, Claude Desktop, VS Code, Cursor, …) is missing from sessions">
 
-Alternatively, run `meridian permissions` to open all three panes in the correct order.
+Chromium- and Electron-based apps ship with their macOS accessibility tree disabled. Without the tree, screenpipe's focus tracker never sees the app and its activity gets attributed to whichever native app was focused beforehand — or silently dropped.
+
+Meridian fixes this with the `com.meridiona.a11y-helper` agent, which enables the accessibility tree on each Electron app as it comes into focus. If sessions for these apps are missing, the helper is most likely not running or not trusted:
+
+1. Confirm it's running and trusted:
+
+   ```bash
+   meridian doctor   # look for the a11y_helper check
+   meridian status   # com.meridiona.a11y-helper should be listed as running
+   ```
+
+2. If the doctor check reports the helper is not trusted, re-run the permissions walkthrough and add the `meridian-a11y-helper` binary in the Accessibility pane (it's a separate entry from screenpipe):
+
+   ```bash
+   meridian permissions
+   ```
+
+3. Restart the stack so the helper picks up the new grant and screenpipe re-attaches to the now-enabled apps:
+
+   ```bash
+   meridian restart
+   ```
+
+Newly enabled apps materialise their accessibility tree within a few seconds of first focus; frames recorded before that window may still be attributed to the previous app.
 
 </Accordion>
 
@@ -308,7 +328,7 @@ Alternatively, run `meridian permissions` to open all three panes in the correct
 
 ## Dashboard
 
-<Accordion title="http://localhost:3000 is not loading">
+<Accordion title="http://localhost:3939 is not loading">
 
 1. Check whether the UI service is running:
 

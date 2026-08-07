@@ -33,20 +33,23 @@ This guide walks you through getting Meridian running on your machine for the fi
 
   </Step>
   <Step title="Grant screenpipe the required macOS permissions">
-    screenpipe needs three macOS privacy permissions to record your screen activity. The installer walks you through each one interactively. If you skipped that step or need to re-grant permissions later, run:
+    screenpipe needs two macOS privacy permissions to record your screen activity. The installer walks you through each one interactively. If you skipped that step or need to re-grant permissions later, run:
 
     ```bash
     meridian permissions
     ```
 
-    The three permissions screenpipe requires are:
+    The two permissions screenpipe requires are:
 
     - **Screen Recording** — to capture frames and OCR text
     - **Accessibility** — to read window titles and accessibility tree events
-    - **Microphone** — to transcribe audio (optional but recommended for meeting context)
 
     <Note>
-      For Screen Recording and Accessibility, click the **+** button in the System Settings pane, navigate to the screenpipe binary, and toggle it on. The Microphone pane works differently — screenpipe will appear there automatically after it first requests mic access. If it isn't listed yet, grant Screen Recording first, then check back.
+      For each pane, click the **+** button in System Settings, navigate to the screenpipe binary, and toggle it on. Audio capture is disabled by default (screenpipe runs with `--disable-audio`), so no Microphone permission is required.
+    </Note>
+
+    <Note>
+      **Add `meridian-a11y-helper` to Accessibility too.** Meridian installs a small helper agent (`com.meridiona.a11y-helper`) that needs its own Accessibility grant so Chromium- and Electron-based apps (Slack, Claude Desktop, VS Code, Cursor, Codex, …) become visible to screenpipe. The installer opens the Accessibility pane a second time for this binary — add it the same way you added screenpipe. Without it, those apps' activity is silently misattributed to whichever native app was focused beforehand.
     </Note>
   </Step>
   <Step title="Configure your credentials">
@@ -80,7 +83,7 @@ This guide walks you through getting Meridian running on your machine for the fi
     meridian status
     ```
 
-    You should see all services — `com.meridiona.screenpipe`, `com.meridiona.daemon`, `com.meridiona.jira-updater`, `com.meridiona.ui`, `com.meridiona.mlx-server`, and `com.meridiona.coding-agent-indexer` — reported as running with their process IDs.
+    You should see all services — `com.meridiona.screenpipe`, `com.meridiona.daemon`, `com.meridiona.jira-updater`, `com.meridiona.ui`, `com.meridiona.mlx-server`, `com.meridiona.a11y-helper`, and `com.meridiona.coding-agent-indexer` — reported as running with their process IDs.
 
     <Note>
       **MLX inference server for task classification.** If you installed with `--mlx`, Meridian uses a persistent MLX inference server (Qwen3.5-9B, running on-device via Metal) for session-to-ticket classification. On first start, the model downloads to your local cache (~6.6 GB) — this can take a few minutes depending on your connection speed. Subsequent starts load from cache in around 5 seconds. Watch the server come up with `meridian logs mlx-server`. If you haven't set up the MLX server, set `CLASSIFICATION_ENABLED=false` in `~/.meridian/.env` to run in activity-tracking mode without ticket classification.
@@ -90,10 +93,14 @@ This guide walks you through getting Meridian running on your machine for the fi
     Once the daemons are running, open your browser to:
 
     ```
-    http://localhost:3000
+    http://localhost:3939
     ```
 
     The dashboard shows a real-time timeline of your app sessions, coloured by activity category, with a daily breakdown chart and session detail views. New sessions appear every 60 seconds as the daemon processes the latest screenpipe frames.
+
+    <Tip>
+      Port 3939 is the default. To run the dashboard on a different port, set `MERIDIAN_UI_PORT` in `~/.meridian/.env` and run `meridian restart`. See [Configuration](/configuration) for details.
+    </Tip>
   </Step>
 </Steps>
 
@@ -136,7 +143,7 @@ meridian restart
   Run `meridian doctor` to identify the specific failure. Common causes are a missing `~/.meridian/.env` file (run `./install.sh` to create it), or a missing screenpipe database (start screenpipe first, then run `meridian start`).
 </Accordion>
 
-<Accordion title="The dashboard at localhost:3000 isn't loading">
+<Accordion title="The dashboard at localhost:3939 isn't loading">
   Check the UI log: `meridian logs ui`. If the build is missing, the installer may have been run with `--no-ui`. Rebuild by running `cd ui && npm ci && npm run build`, then restart with `meridian restart`.
 </Accordion>
 

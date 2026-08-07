@@ -12,7 +12,7 @@ Every minute you spend on PM overhead is a minute not spent building. The mismat
 
 ## How Meridian works
 
-Meridian runs as a lightweight background daemon alongside [screenpipe](https://screenpi.pe), which continuously records your screen activity as raw frames — OCR text, accessibility tree events, audio transcriptions — stored locally in a SQLite database. Every 60 seconds (configurable), Meridian reads those frames, detects app-switch boundaries, and closes each completed work block as a structured **app session** in its own database.
+Meridian runs as a lightweight background daemon alongside [screenpipe](https://screenpi.pe), which continuously records your screen activity as raw frames — OCR text and accessibility tree events — stored locally in a SQLite database. Audio capture is disabled by default, so screenpipe does not record or transcribe audio. Every 60 seconds (configurable), Meridian reads those frames, detects app-switch boundaries, and closes each completed work block as a structured **app session** in its own database.
 
 Each session captures the app you were using, how long you used it, the window titles and OCR text it observed, and the clipboard and app-switch signals it detected. From that structured data, Meridian's classification layer links the session to the specific Jira, GitHub, or Linear ticket you were working on, then automatically updates that ticket.
 
@@ -26,7 +26,7 @@ Each session captures the app you were using, how long you used it, the window t
 
 **MCP server** — Meridian ships a TypeScript MCP server that exposes your structured session data to any MCP-compatible AI tool, including Claude Code, Claude Desktop, and Cursor. Query your activity history in plain language, ask for summaries, or feed live context into your AI assistant.
 
-**Local dashboard** — A Next.js UI at `http://localhost:3000` gives you a real-time timeline of your sessions, daily category breakdowns, and session detail views. It reads directly from the local database and requires no account or login.
+**Local dashboard** — A Next.js UI at `http://localhost:3939` (override via `MERIDIAN_UI_PORT`) gives you a real-time timeline of your sessions, daily category breakdowns, and session detail views. It reads directly from the local database and requires no account or login.
 
 ## System requirements
 
